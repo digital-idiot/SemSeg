@@ -1,0 +1,229 @@
+import torch
+from torch import nn, Tensor
+from einops import rearrange
+from torch.nn import functional as tnf
+
+
+class MLP(nn.Module):
+    def __init__(self, dim=2048, embed_dim=768):
+        super().__init__()
+        self.proj = nn.Linear(dim, embed_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x.flatten(2).transpose(1, 2)
+        x = self.proj(x)
+        return x
+
+
+class PatchEmbed(nn.Module):
+    def __init__(self, patch_size=4) -> None:
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.ModuleList([
+            nn.MaxPool2d(patch_size, patch_size),
+            nn.AvgPool2d(patch_size, patch_size)
+        ])
+
+    def forward(self, x: Tensor) -> Tensor:
+        _, _, h, w = x.shape
+        if w % self.patch_size != 0:
+            x = tnf.pad(x, (0, self.patch_size - w % self.patch_size))
+        if h % self.patch_size != 0:
+            x = tnf.pad(x, (0, 0, 0, self.patch_size - h % self.patch_size))
+
+        x = 0.5 * (self.proj[0](x) + self.proj[1](x))
+        return x
+
+
+# noinspection SpellCheckingInspection
+class LawinAttn(nn.Module):
+    def __init__(self, in_ch=512, head=4, patch_size=8, reduction=2) -> None:
+        super().__init__()
+        self.head = head
+
+        self.position_mixing = nn.ModuleList([
+            nn.Linear(patch_size * patch_size, patch_size * patch_size)
+            for _ in range(self.head)])
+
+        self.inter_channels = max(in_ch // reduction, 1)
+        self.g = nn.Conv2d(in_ch, self.inter_channels, (1, 1))
+        self.theta = nn.Conv2d(in_ch, self.inter_channels, (1, 1))
+        self.phi = nn.Conv2d(in_ch, self.inter_channels, (1, 1))
+        self.conv_out = nn.Sequential(
+            nn.Conv2d(self.inter_channels, in_ch, (1, 1), bias=False),
+            nn.BatchNorm2d(in_ch)
+        )
+
+    def forward(self, query: Tensor, context: Tensor) -> Tensor:
+        b, c, h, w = context.shape
+        context = context.reshape(b, c, -1)
+        context_mlp = []
+
+        for i, pm in enumerate(self.position_mixing):
+            context_crt = context[
+                :, (c // self.head) * i:(c // self.head) * (i + 1), :
+            ]
+            context_mlp.append(pm(context_crt))
+
+        context_mlp = torch.cat(context_mlp, dim=1)
+        context = context + context_mlp
+        context = context.reshape(b, c, h, w)
+
+        g_x = self.g(context).view(b, self.inter_channels, -1)
+        g_x = rearrange(g_x, "b (h dim) n -> (b h) dim n", h=self.head)
+        g_x = g_x.permute(0, 2, 1)
+
+        theta_x = self.theta(query).view(b, self.inter_channels, -1)
+        theta_x = rearrange(theta_x, "b (h dim) n -> (b h) dim n", h=self.head)
+        theta_x = theta_x.permute(0, 2, 1)
+
+        phi_x = self.phi(context).view(b, self.inter_channels, -1)
+        phi_x = rearrange(phi_x, "b (h dim) n -> (b h) dim n", h=self.head)
+
+        pairwise_weight = torch.matmul(theta_x, phi_x)
+        pairwise_weight /= theta_x.shape[-1] ** 0.5
+        pairwise_weight = pairwise_weight.softmax(dim=-1)
+
+        y = torch.matmul(pairwise_weight, g_x)
+        y = rearrange(y, "(b h) n dim -> b n (h dim)", h=self.head)
+        y = y.permute(0, 2, 1).contiguous().reshape(
+            b, self.inter_channels, *query.shape[-2:]
+        )
+
+        output = query + self.conv_out(y)
+        return output
+
+
+class ConvModule(nn.Module):
+    def __init__(self, c1, c2):
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, (1, 1), bias=False)
+        self.bn = nn.BatchNorm2d(c2)  # use SyncBN in original
+        self.activate = nn.Mish(True)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.activate(self.bn(self.conv(x)))
+
+
+# noinspection SpellCheckingInspection
+class LawinHead(nn.Module):
+    def __init__(
+            self, in_channels: list, embed_dim=512, out_channels=8
+    ) -> None:
+        super().__init__()
+        for i, dim in enumerate(in_channels):
+            self.add_module(
+                f"linear_c{i + 1}", MLP(dim, 48 if i == 0 else embed_dim)
+            )
+
+        self.linear_fuse = ConvModule(embed_dim * 3, embed_dim)
+        # self.short_path = ConvModule(embed_dim*3, embed_dim)
+
+        self.lawin_8 = LawinAttn(embed_dim, 64)
+        self.lawin_4 = LawinAttn(embed_dim, 16)
+        self.lawin_2 = LawinAttn(embed_dim, 4)
+        self.ds_8 = PatchEmbed(8)
+        self.ds_4 = PatchEmbed(4)
+        self.ds_2 = PatchEmbed(2)
+
+        self.image_pool = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            ConvModule(embed_dim, embed_dim)
+        )
+
+        self.cat = ConvModule(embed_dim * 5, embed_dim)
+
+        self.low_level_fuse = ConvModule(embed_dim + 48, embed_dim)
+        self.linear_pred = nn.Conv2d(embed_dim, out_channels, (1, 1))
+        self.dropout = nn.Dropout2d(0.1)
+
+    def get_lawin_att_feats(self, x: Tensor, patch_size: int):
+        _, _, h, w = x.shape
+        query = tnf.unfold(x, patch_size, stride=patch_size)
+        query = rearrange(
+            query,
+            'b (c ph pw) (nh nw) -> (b nh nw) c ph pw',
+            ph=patch_size,
+            pw=patch_size,
+            nh=h // patch_size,
+            nw=w // patch_size
+        )
+        outs = list()
+
+        for r in [8, 4, 2]:
+            context = tnf.unfold(
+                x,
+                patch_size * r,
+                stride=patch_size,
+                padding=int((r - 1) / 2 * patch_size)
+            )
+            context = rearrange(
+                context,
+                "b (c ph pw) (nh nw) -> (b nh nw) c ph pw",
+                ph=patch_size * r,
+                pw=patch_size * r,
+                nh=h // patch_size,
+                nw=w // patch_size
+            )
+            context = getattr(self, f"ds_{r}")(context)
+            output = getattr(self, f"lawin_{r}")(query, context)
+            output = rearrange(
+                output,
+                "(b nh nw) c ph pw -> b c (nh ph) (nw pw)",
+                ph=patch_size,
+                pw=patch_size,
+                nh=h // patch_size,
+                nw=w // patch_size
+            )
+            outs.append(output)
+        return outs
+
+    def forward(self, features):
+        b, _, h, w = features[1].shape
+        outs = [
+            self.linear_c2(features[1]).permute(0, 2, 1).reshape(
+                b, -1, *features[1].shape[-2:]
+            )
+        ]
+
+        for i, feature in enumerate(features[2:]):
+            cf = eval(
+                f"self.linear_c{i + 3}"
+            )(feature).permute(0, 2, 1).reshape(b, -1, *feature.shape[-2:])
+            outs.append(
+                tnf.interpolate(
+                    cf, size=(h, w), mode='bilinear', align_corners=False
+                )
+            )
+
+        feat = self.linear_fuse(torch.cat(outs[::-1], dim=1))
+        b, _, h, w = feat.shape
+
+        feat_short = feat
+        feat_lawin = self.get_lawin_att_feats(feat, 8)
+
+        feat_pool = tnf.interpolate(
+            self.image_pool(feat),
+            size=(h, w), mode='bilinear', align_corners=False
+        )
+
+        tensor_list = [feat_short, *feat_lawin, feat_pool]
+        for i in range(len(tensor_list)):
+            if tensor_list[i].shape[-2:] != features[0].shape[-2:]:
+                tensor_list[i] = tnf.interpolate(
+                    tensor_list[i],
+                    size=features[0].shape[-2:],
+                    mode='bilinear',
+                    align_corners=False
+                )
+
+        output = self.cat(
+            torch.cat(tensor_list, dim=1)
+        )
+
+        c1 = self.linear_c1(features[0]).permute(0, 2, 1).reshape(
+            b, -1, *features[0].shape[-2:]
+        )
+        fused = self.low_level_fuse(torch.cat([output, c1], dim=1))
+        seg = self.linear_pred(self.dropout(fused))
+        return seg
