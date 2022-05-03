@@ -172,7 +172,11 @@ class ReadableImageDataset(Dataset):
         split_stops = np.cumsum(split_sizes).tolist()
         split_starts = 0, * split_stops[:-1]
         return [
-            self.path_list[indexes[i:j]]
+            ReadableImageDataset(
+                path_list=self.path_list[indexes[i:j]],
+                transform=self.transform,
+                channels=self.channels
+            )
             for i, j in zip(split_starts, split_stops)
         ]
 
@@ -411,6 +415,8 @@ class ReadableImagePairDataset(Dataset):
             f"with {len(label_list)} labels"
         )
         self.size = len(image_list)
+        self.image_channels = image_channels
+        self.label_channels = label_channels
         self.img_ds = ReadableImageDataset(
             path_list=image_list,
             transform=None,
@@ -455,6 +461,38 @@ class ReadableImagePairDataset(Dataset):
 
     def label_dataset(self):
         return self.lbl_ds
+
+    def split(self, ratios: Sequence[int], random: bool = True):
+        if not isinstance(ratios, np.ndarray):
+            ratios = np.array(ratios)
+        indexes = np.arange(len(self))
+        if random:
+            np.random.shuffle(indexes)
+        split_sizes = np.around(
+            len(self) * (ratios / ratios.sum()), decimals=0
+        ).astype(int)
+        diff = len(self) - split_sizes.sum()
+        sorted_part_indexes = np.argsort(split_sizes)
+        if diff > 0:
+            split_sizes[sorted_part_indexes[:diff]] += 1
+        else:
+            split_sizes[sorted_part_indexes[diff:]] -= 1
+        if np.any(split_sizes == 0):
+            raise RuntimeWarning(
+                "All partitions could not be accommodated!"
+            )
+        split_stops = np.cumsum(split_sizes).tolist()
+        split_starts = 0, * split_stops[:-1]
+        return [
+            ReadableImagePairDataset(
+                image_list=self.img_ds.get_paths()[indexes[i:j]],
+                label_list=self.lbl_ds.get_paths()[indexes[i:j]],
+                transform=self.transform,
+                image_channels=self.image_channels,
+                label_channels=self.label_channels
+            )
+            for i, j in zip(split_starts, split_stops)
+        ]
 
     @classmethod
     def collate(cls, samples: Sequence):
