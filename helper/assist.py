@@ -414,14 +414,14 @@ class PredictionWriter(BasePredictionWriter):
             overwrite: bool = False
     ):
         super(PredictionWriter, self).__init__(write_interval='batch')
-        if not isinstance(writable_datasets, WritableDataset):
+        if isinstance(writable_datasets, WritableDataset):
             writable_datasets = [writable_datasets]
         assert all(
             [
                 isinstance(wds, WritableDataset)
                 for wds in writable_datasets
             ]
-        ), "'write_interval' is not an instance of  WritableDataset!"
+        ), "one or more datasets are not instances of WritableDataset!"
         self.writable_datasets = writable_datasets
         self.overwrite = bool(overwrite)
 

@@ -59,7 +59,7 @@ if __name__ == '__main__':
         channels=3,
     )
 
-    predict_writer = predict_dataset.writable_clone(dst_dir='')
+    predict_writer = predict_dataset.writable_clone(dst_dir='Predictions')
     data_loader = IgniteDataModule.from_datasets(
         train_dataset=train_dataset,
         val_dataset=test_dataset,
@@ -98,7 +98,6 @@ if __name__ == '__main__':
         check_val_every_n_epoch=1,
         detect_anomaly=True,
         log_every_n_steps=10,
-        flush_logs_every_n_steps=10,
         enable_progress_bar=True,
         precision=16,
         strategy='ddp',

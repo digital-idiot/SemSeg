@@ -7,6 +7,7 @@ import rasterio as rio
 from pathlib import Path
 from affine import Affine
 from click import FileError
+from operator import itemgetter
 from torch.utils.data import Dataset
 from abc import ABCMeta, abstractmethod
 from data_factory.transforms import TransformPair
@@ -171,14 +172,18 @@ class ReadableImageDataset(Dataset):
             )
         split_stops = np.cumsum(split_sizes).tolist()
         split_starts = 0, * split_stops[:-1]
-        return [
-            ReadableImageDataset(
-                path_list=self.path_list[indexes[i:j]],
-                transform=self.transform,
-                channels=self.channels
+        parts = list()
+        for i, j in zip(split_starts, split_stops):
+            get_subsample = itemgetter(*indexes[i:j])
+            # noinspection PyTypeChecker
+            parts.append(
+                ReadableImageDataset(
+                    path_list=get_subsample(self.get_paths()),
+                    transform=self.transform,
+                    channels=self.channels
+                )
             )
-            for i, j in zip(split_starts, split_stops)
-        ]
+        return parts
 
     @classmethod
     def collate(cls, samples):
@@ -392,16 +397,20 @@ class ReadableImagePairDataset(Dataset):
             )
         split_stops = np.cumsum(split_sizes).tolist()
         split_starts = 0, * split_stops[:-1]
-        return [
-            ReadableImagePairDataset(
-                image_list=self.img_ds.get_paths()[indexes[i:j]],
-                label_list=self.lbl_ds.get_paths()[indexes[i:j]],
-                transform=self.transform,
-                image_channels=self.image_channels,
-                label_channels=self.label_channels
+        parts = list()
+        for i, j in zip(split_starts, split_stops):
+            get_subsample = itemgetter(*indexes[i:j])
+            # noinspection PyTypeChecker
+            parts.append(
+                ReadableImagePairDataset(
+                    image_list=get_subsample(self.img_ds.get_paths()),
+                    label_list=get_subsample(self.lbl_ds.get_paths()),
+                    transform=self.transform,
+                    image_channels=self.image_channels,
+                    label_channels=self.label_channels
+                )
             )
-            for i, j in zip(split_starts, split_stops)
-        ]
+        return parts
 
     @classmethod
     def collate(cls, samples: Sequence):
