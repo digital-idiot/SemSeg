@@ -9,6 +9,7 @@ from affine import Affine
 from click import FileError
 from torch.utils.data import Dataset
 from abc import ABCMeta, abstractmethod
+from data_factory.transforms import TransformPair
 from rasterio.errors import NotGeoreferencedWarning
 from typing import Tuple, List, Union, Callable, Dict, Sequence, Any
 
@@ -106,6 +107,12 @@ class ReadableImageDataset(Dataset):
     def stackable(self):
         return len(set(self.get_shapes())) == 1
 
+    def get_paths(self):
+        return self.path_list
+
+    def get_transform(self):
+        return self.transform
+
     def writable_clone(
             self,
             dst_dir: Union[Union[str, Path], Union[Sequence[Union[str, Path]]]]
@@ -143,10 +150,31 @@ class ReadableImageDataset(Dataset):
         meta_list = self.get_metas()
         return WriteableImageDataset(path_list=file_paths, meta_list=meta_list)
 
-    def split(self, ratio: Sequence[int], random: bool = True):
-        # indexes = np.arange(len(self))
-        # if random:
-        pass
+    def split(self, ratios: Sequence[int], random: bool = True):
+        if not isinstance(ratios, np.ndarray):
+            ratios = np.array(ratios)
+        indexes = np.arange(len(self))
+        if random:
+            np.random.shuffle(indexes)
+        split_sizes = np.around(
+            len(self) * (ratios / ratios.sum()), decimals=0
+        ).astype(int)
+        diff = len(self) - split_sizes.sum()
+        sorted_part_indexes = np.argsort(split_sizes)
+        if diff > 0:
+            split_sizes[sorted_part_indexes[:diff]] += 1
+        else:
+            split_sizes[sorted_part_indexes[diff:]] -= 1
+        if np.any(split_sizes == 0):
+            raise RuntimeWarning(
+                "All partitions could not be accommodated!"
+            )
+        split_stops = np.cumsum(split_sizes).tolist()
+        split_starts = 0, * split_stops[:-1]
+        return [
+            self.path_list[indexes[i:j]]
+            for i, j in zip(split_starts, split_stops)
+        ]
 
     @classmethod
     def collate(cls, samples):
@@ -312,8 +340,7 @@ class DatasetConfigurator(object):
             self,
             image_channels: Union[int, List[int], Tuple[int]] = None,
             label_channels: Union[int, List[int], Tuple[int]] = 1,
-            image_transform: Callable = None,
-            label_transform: Callable = None
+            transform: Callable = None,
     ):
         if (self.image_list is not None) and (self.label_list is not None):
             return ReadableImagePairDataset(
@@ -321,8 +348,7 @@ class DatasetConfigurator(object):
                 label_list=self.label_list,
                 image_channels=image_channels,
                 label_channels=label_channels,
-                image_transform=image_transform,
-                label_transform=label_transform
+                transform=transform,
             )
         else:
             raise AssertionError(
@@ -333,7 +359,6 @@ class DatasetConfigurator(object):
             self,
             transform: Callable = None,
             channels: Union[int, Tuple[int], List[int]] = None,
-            cast_type: torch.dtype = torch.float32
     ):
         if self.image_list is not None:
             return ReadableImageDataset(
@@ -350,7 +375,6 @@ class DatasetConfigurator(object):
             self,
             transform: Callable = None,
             channels: Union[int, Tuple[int], List[int]] = None,
-            cast_type: torch.dtype = torch.float32
     ):
         if self.label_list is not None:
             return ReadableImageDataset(
@@ -371,8 +395,7 @@ class ReadableImagePairDataset(Dataset):
             label_list: Union[Tuple[str], List[Path]],
             image_channels: Union[int, List[int], Tuple[int]] = None,
             label_channels: Union[int, List[int], Tuple[int]] = 1,
-            image_transform: Callable = None,
-            label_transform: Callable = None
+            transform: TransformPair = None,
     ):
         """
 
@@ -381,8 +404,7 @@ class ReadableImagePairDataset(Dataset):
             label_list:
             image_channels:
             label_channels:
-            image_transform:
-            label_transform:
+            transform:
         """
         assert len(image_list) == len(label_list), (
             f"Length mismatch, {len(image_list)} images provided " +
@@ -391,14 +413,19 @@ class ReadableImagePairDataset(Dataset):
         self.size = len(image_list)
         self.img_ds = ReadableImageDataset(
             path_list=image_list,
-            transform=image_transform,
+            transform=None,
             channels=image_channels
         )
         self.lbl_ds = ReadableImageDataset(
             path_list=label_list,
-            transform=label_transform,
+            transform=None,
             channels=label_channels
         )
+        if transform:
+            assert isinstance(transform, TransformPair), (
+                "'transform' is not a valid TransformPair object"
+            )
+        self.transform = transform
 
     def all_readable(self):
         return (
@@ -415,10 +442,13 @@ class ReadableImagePairDataset(Dataset):
         return self.size
 
     def __getitem__(self, index: int):
-        return (
-           self.img_ds[index],
-           self.lbl_ds[index]
-        )
+        img = self.img_ds[index]
+        lbl = self.lbl_ds[index]
+        if self.transform:
+            image_transform, label_transform = self.transform()
+            img = image_transform(img)
+            lbl = label_transform(lbl)
+        return img, lbl
 
     def image_dataset(self):
         return self.img_ds
