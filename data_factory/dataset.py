@@ -26,8 +26,7 @@ class ReadableImageDataset(Dataset):
             self,
             path_list: Union[Tuple[Union[str, Path]], List[Union[str, Path]]],
             transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None,
-            cast_type: torch.dtype = torch.float32
+            channels: Union[int, Tuple[int], List[int]] = None
     ):
         super(ReadableImageDataset, self).__init__()
         self.path_list = [
@@ -36,7 +35,6 @@ class ReadableImageDataset(Dataset):
         self.transform = transform
         self.existence_list = [path.is_file() for path in path_list]
         self.channels = channels
-        self.cast_type = cast_type
 
     def readable(self, idx):
         assert 0 <= idx < len(self), f'Index ({idx}) is out of bound!'
@@ -341,8 +339,7 @@ class DatasetConfigurator(object):
             return ReadableImageDataset(
                 path_list=self.image_list,
                 transform=transform,
-                channels=channels,
-                cast_type=cast_type
+                channels=channels
             )
         else:
             raise AssertionError(
@@ -359,8 +356,7 @@ class DatasetConfigurator(object):
             return ReadableImageDataset(
                 path_list=self.label_list,
                 transform=transform,
-                channels=channels,
-                cast_type=cast_type
+                channels=channels
             )
         else:
             raise AssertionError(

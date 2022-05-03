@@ -3,6 +3,7 @@ from loss.seg_loss import dice_loss
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
 from core.igniter import LightningSemSeg
+from data_factory.dataset import DatasetConfigurator
 from data_factory.data_module import IgniteDataModule
 from helper.assist import WrappedLoss, WrappedOptimizer
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -30,32 +31,35 @@ if __name__ == '__main__':
         optimizer=optimizer,
         criterion=loss_function
     )
-    train_dataset = ReadableImagePairDataset(
-        conf_path="Data/FloodNetData/Urban/Train/Train_DataConf.json",
+    train_dataset = DatasetConfigurator(
+        conf_path="Data/FloodNetData/Urban/Train/Train_DataConf.json"
+    ).generate_paired_dataset(
         image_channels=3,
         label_channels=1,
         image_transform=None,
         label_transform=None
     )
-    val_dataset = ReadableImagePairDataset(
-        conf_path="Data/FloodNetData/Urban/Validation/Validation_DataConf.json",
+
+    test_dataset = DatasetConfigurator(
+        conf_path="Data/FloodNetData/Urban/Validation/Validation_DataConf.json"
+    ).generate_paired_dataset(
         image_channels=3,
         label_channels=1,
         image_transform=None,
         label_transform=None
     )
-    test_dataset = ReadableImagePairDataset(
-        conf_path="Data/FloodNetData/Urban/Test/Test_DataConf.json",
-        image_channels=3,
-        label_channels=1,
-        image_transform=None,
-        label_transform=None
+
+    predict_dataset = DatasetConfigurator(
+        conf_path="Data/FloodNetData/Urban/Test/Test_DataConf.json"
+    ).generate_image_dataset(
+        transform=None,
+        channels=3,
     )
-    predict_dataset = test_dataset.label_dataset()
+
     predict_writer = predict_dataset.writable_clone(dst_dir='')
     data_loader = IgniteDataModule.from_datasets(
         train_dataset=train_dataset,
-        val_dataset=val_dataset,
+        val_dataset=test_dataset,
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         num_workers=16,
