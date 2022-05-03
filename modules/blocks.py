@@ -1,7 +1,7 @@
 import torch
 import torch.nn as tnn
+from typing import Sequence, Union
 from modules.layers import PaddedConv2d
-from typing import Sequence, Union, Callable
 
 
 class ConvolutionBlock(tnn.Module):

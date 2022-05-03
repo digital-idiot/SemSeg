@@ -36,8 +36,12 @@ if __name__ == '__main__':
     ).generate_paired_dataset(
         image_channels=3,
         label_channels=1,
-        image_transform=None,
-        label_transform=None
+        transform=None
+    )
+
+    train_dataset, val_dataset = train_dataset.split(
+        ratios=(8, 2),
+        random=True
     )
 
     test_dataset = DatasetConfigurator(
@@ -45,8 +49,7 @@ if __name__ == '__main__':
     ).generate_paired_dataset(
         image_channels=3,
         label_channels=1,
-        image_transform=None,
-        label_transform=None
+        transform=None
     )
 
     predict_dataset = DatasetConfigurator(

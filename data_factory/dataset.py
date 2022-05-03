@@ -301,97 +301,6 @@ class WriteableImageDataset(WritableDataset):
         return status_list
 
 
-class DatasetConfigurator(object):
-    def __init__(self, conf_path: Union[str, Path]):
-        if isinstance(conf_path, str):
-            conf_path = Path(conf_path)
-        assert isinstance(conf_path, Path), (
-            "'conf_path' is not a valid string or Path like object"
-        )
-        with open(conf_path, 'r') as src:
-            data_map = json.load(src)
-
-        keys = data_map['keys']
-
-        if data_map["image_directory"]:
-            if data_map['relative_path']:
-                img_dir = conf_path.parent / data_map["image_directory"]
-            else:
-                img_dir = Path(data_map["image_directory"])
-            img_list = [
-                (img_dir / '.'.join([stem, data_map['file_extension']]))
-                for stem in keys
-            ]
-        else:
-            img_list = None
-
-        if data_map["label_directory"]:
-            if data_map['relative_path']:
-                lbl_dir = conf_path.parent / data_map["label_directory"]
-            else:
-                lbl_dir = Path(data_map["label_directory"])
-            lbl_list = [
-                (lbl_dir / '.'.join([stem, data_map['file_extension']]))
-                for stem in keys
-            ]
-        else:
-            lbl_list = None
-
-        self.image_list = img_list
-        self.label_list = lbl_list
-
-    def generate_paired_dataset(
-            self,
-            image_channels: Union[int, List[int], Tuple[int]] = None,
-            label_channels: Union[int, List[int], Tuple[int]] = 1,
-            transform: Callable = None,
-    ):
-        if (self.image_list is not None) and (self.label_list is not None):
-            return ReadableImagePairDataset(
-                image_list=self.image_list,
-                label_list=self.label_list,
-                image_channels=image_channels,
-                label_channels=label_channels,
-                transform=transform,
-            )
-        else:
-            raise AssertionError(
-                "Image set and/or label set is not available!"
-            )
-
-    def generate_image_dataset(
-            self,
-            transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None,
-    ):
-        if self.image_list is not None:
-            return ReadableImageDataset(
-                path_list=self.image_list,
-                transform=transform,
-                channels=channels
-            )
-        else:
-            raise AssertionError(
-                "Image set is not available!"
-            )
-
-    def generate_label_dataset(
-            self,
-            transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None,
-    ):
-        if self.label_list is not None:
-            return ReadableImageDataset(
-                path_list=self.label_list,
-                transform=transform,
-                channels=channels
-            )
-        else:
-            raise AssertionError(
-                "Label set is not available!"
-            )
-
-
 class ReadableImagePairDataset(Dataset):
     def __init__(
             self,
@@ -500,3 +409,94 @@ class ReadableImagePairDataset(Dataset):
         image_batch = ReadableImageDataset.collate(samples=images)
         label_batch = ReadableImageDataset.collate(samples=labels)
         return image_batch, label_batch
+
+
+class DatasetConfigurator(object):
+    def __init__(self, conf_path: Union[str, Path]):
+        if isinstance(conf_path, str):
+            conf_path = Path(conf_path)
+        assert isinstance(conf_path, Path), (
+            "'conf_path' is not a valid string or Path like object"
+        )
+        with open(conf_path, 'r') as src:
+            data_map = json.load(src)
+
+        keys = data_map['keys']
+
+        if data_map["image_directory"]:
+            if data_map['relative_path']:
+                img_dir = conf_path.parent / data_map["image_directory"]
+            else:
+                img_dir = Path(data_map["image_directory"])
+            img_list = [
+                (img_dir / '.'.join([stem, data_map['file_extension']]))
+                for stem in keys
+            ]
+        else:
+            img_list = None
+
+        if data_map["label_directory"]:
+            if data_map['relative_path']:
+                lbl_dir = conf_path.parent / data_map["label_directory"]
+            else:
+                lbl_dir = Path(data_map["label_directory"])
+            lbl_list = [
+                (lbl_dir / '.'.join([stem, data_map['file_extension']]))
+                for stem in keys
+            ]
+        else:
+            lbl_list = None
+
+        self.image_list = img_list
+        self.label_list = lbl_list
+
+    def generate_paired_dataset(
+            self,
+            image_channels: Union[int, List[int], Tuple[int]] = None,
+            label_channels: Union[int, List[int], Tuple[int]] = 1,
+            transform: TransformPair = None,
+    ):
+        if (self.image_list is not None) and (self.label_list is not None):
+            return ReadableImagePairDataset(
+                image_list=self.image_list,
+                label_list=self.label_list,
+                image_channels=image_channels,
+                label_channels=label_channels,
+                transform=transform,
+            )
+        else:
+            raise AssertionError(
+                "Image set and/or label set is not available!"
+            )
+
+    def generate_image_dataset(
+            self,
+            transform: Callable = None,
+            channels: Union[int, Tuple[int], List[int]] = None,
+    ):
+        if self.image_list is not None:
+            return ReadableImageDataset(
+                path_list=self.image_list,
+                transform=transform,
+                channels=channels
+            )
+        else:
+            raise AssertionError(
+                "Image set is not available!"
+            )
+
+    def generate_label_dataset(
+            self,
+            transform: Callable = None,
+            channels: Union[int, Tuple[int], List[int]] = None,
+    ):
+        if self.label_list is not None:
+            return ReadableImageDataset(
+                path_list=self.label_list,
+                transform=transform,
+                channels=channels
+            )
+        else:
+            raise AssertionError(
+                "Label set is not available!"
+            )
