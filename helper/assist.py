@@ -121,7 +121,7 @@ class SemSegMultiMetrics(Metric):
 
     # noinspection SpellCheckingInspection
     def update(self, preds: torch.Tensor, target: torch.Tensor):
-        self.count += 1.0
+        self._count += 1.0
         self._accuracy += accuracy(
             preds=preds,
             target=target,

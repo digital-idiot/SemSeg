@@ -54,8 +54,7 @@ class Decoder(tnn.Module):
         b = tnf.interpolate(
             input=x,
             size=(a.size(-2), a.size(-1)),
-            mode='bilinear',
-            align_corners=False
+            mode='bilinear'
         )  # ~4x
         b = self.feature_reducer(b)
         return a + b

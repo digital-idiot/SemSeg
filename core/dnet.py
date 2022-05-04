@@ -35,21 +35,18 @@ class DNet(tnn.Module):
 
     def forward(
             self,
-            image_batch: torch.Tensor,
+            x: torch.Tensor,
     ) -> torch.Tensor:
         # noinspection PyArgumentList
-        h, w = image_batch.size(-2), image_batch.size(-1)
-        fused_features = self.encoder(
-            image_batch=image_batch,
-        )
-        x = self.decoder(fused_features)
+        h, w = x.size(-2), x.size(-1)
+        x = self.encoder(x)
+        x = self.decoder(x)
 
         # Force match spatial dimension of image and features
         x = tnf.interpolate(
             input=x,
             size=(h, w),
-            mode='nearest',
-            align_corners=False
+            mode='nearest'
         )
         x = self.terminator(x)
         return x

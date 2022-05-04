@@ -12,23 +12,17 @@ from torch.utils.data import Dataset
 from abc import ABCMeta, abstractmethod
 from data_factory.transforms import TransformPair
 from rasterio.errors import NotGeoreferencedWarning
-from typing import Tuple, List, Union, Callable, Dict, Sequence, Any
-
-
-def to_tensor(arr: np.ndarray):
-    arr = torch.from_numpy(arr).contiguous()
-    if isinstance(arr, torch.ByteTensor):
-        return arr.to(dtype=torch.get_default_dtype()).div(255)
-    else:
-        return arr
+from typing import Union, Callable, Dict, Sequence, Any
+from data_factory.utils import image_to_tensor, label_to_tensor
 
 
 class ReadableImageDataset(Dataset):
     def __init__(
             self,
-            path_list: Union[Tuple[Union[str, Path]], List[Union[str, Path]]],
+            path_list: Sequence[Union[str, Path]],
             transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None
+            channels: Union[int, Sequence[int]] = None,
+            tensor_maker: Callable = label_to_tensor
     ):
         super(ReadableImageDataset, self).__init__()
         self.path_list = [
@@ -37,6 +31,11 @@ class ReadableImageDataset(Dataset):
         self.transform = transform
         self.existence_list = [path.is_file() for path in path_list]
         self.channels = channels
+        if tensor_maker:
+            assert isinstance(tensor_maker, Callable), (
+                "'tensor_maker' is not Callable"
+            )
+        self.tensor_maker = tensor_maker
 
     def readable(self, idx):
         assert 0 <= idx < len(self), f'Index ({idx}) is out of bound!'
@@ -64,10 +63,12 @@ class ReadableImageDataset(Dataset):
                     "ignore", category=NotGeoreferencedWarning
                 )
                 with rio.open(self.path_list[index], 'r') as src:
-                    arr = to_tensor(src.read(indexes=self.channels))
+                    arr = src.read(indexes=self.channels)
+                    if self.tensor_maker:
+                        arr = self.tensor_maker(arr)
                     if self.transform:
                         arr = self.transform(arr)
-                    return arr
+                    return torch.unsqueeze(input=arr, dim=0)
         else:
             raise FileNotFoundError(
                 f"File don't exist: {self.path_list[index]}"
@@ -187,7 +188,7 @@ class ReadableImageDataset(Dataset):
 
     @classmethod
     def collate(cls, samples):
-        return torch.stack(samples, dim=0)
+        return torch.cat(tensors=samples, dim=0)
 
 
 class WritableDataset(object, metaclass=ABCMeta):
@@ -211,8 +212,8 @@ class WritableDataset(object, metaclass=ABCMeta):
 class WriteableImageDataset(WritableDataset):
     def __init__(
             self,
-            path_list: Union[Tuple[Union[str, Path]], List[Union[str, Path]]],
-            meta_list: Union[Dict, List[Dict]] = None
+            path_list: Sequence[Union[str, Path]],
+            meta_list: Union[Dict, Sequence[Dict]] = None
     ):
         base_meta = {
             'driver': 'GTiff',
@@ -309,10 +310,12 @@ class WriteableImageDataset(WritableDataset):
 class ReadableImagePairDataset(Dataset):
     def __init__(
             self,
-            image_list: Union[Tuple[str], List[Path]],
-            label_list: Union[Tuple[str], List[Path]],
-            image_channels: Union[int, List[int], Tuple[int]] = None,
-            label_channels: Union[int, List[int], Tuple[int]] = 1,
+            image_list: Sequence[Union[str, Path]],
+            label_list: Sequence[Union[str, Path]],
+            image_channels: Union[int, Sequence[int]] = None,
+            label_channels: Union[int, Sequence[int]] = 1,
+            image_maker: Callable = image_to_tensor,
+            label_maker: Callable = label_to_tensor,
             transform: TransformPair = None,
     ):
         """
@@ -334,12 +337,14 @@ class ReadableImagePairDataset(Dataset):
         self.img_ds = ReadableImageDataset(
             path_list=image_list,
             transform=None,
-            channels=image_channels
+            channels=image_channels,
+            tensor_maker=image_maker
         )
         self.lbl_ds = ReadableImageDataset(
             path_list=label_list,
             transform=None,
-            channels=label_channels
+            channels=label_channels,
+            tensor_maker=label_maker
         )
         if transform:
             assert isinstance(transform, TransformPair), (
@@ -461,9 +466,12 @@ class DatasetConfigurator(object):
 
     def generate_paired_dataset(
             self,
-            image_channels: Union[int, List[int], Tuple[int]] = None,
-            label_channels: Union[int, List[int], Tuple[int]] = 1,
+            image_channels: Union[int, Sequence[int]] = None,
+            label_channels: Union[int, Sequence[int]] = 1,
+            image_maker: Callable = image_to_tensor,
+            label_maker: Callable = label_to_tensor,
             transform: TransformPair = None,
+
     ):
         if (self.image_list is not None) and (self.label_list is not None):
             return ReadableImagePairDataset(
@@ -471,6 +479,8 @@ class DatasetConfigurator(object):
                 label_list=self.label_list,
                 image_channels=image_channels,
                 label_channels=label_channels,
+                image_maker=image_maker,
+                label_maker=label_maker,
                 transform=transform,
             )
         else:
@@ -481,13 +491,15 @@ class DatasetConfigurator(object):
     def generate_image_dataset(
             self,
             transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None,
+            channels: Union[int, Sequence[int]] = None,
+            tensor_maker: Callable = image_to_tensor
     ):
         if self.image_list is not None:
             return ReadableImageDataset(
                 path_list=self.image_list,
                 transform=transform,
-                channels=channels
+                channels=channels,
+                tensor_maker=tensor_maker
             )
         else:
             raise AssertionError(
@@ -497,13 +509,15 @@ class DatasetConfigurator(object):
     def generate_label_dataset(
             self,
             transform: Callable = None,
-            channels: Union[int, Tuple[int], List[int]] = None,
+            channels: Union[int, Sequence[int]] = None,
+            tensor_maker: Callable = label_to_tensor
     ):
         if self.label_list is not None:
             return ReadableImageDataset(
                 path_list=self.label_list,
                 transform=transform,
-                channels=channels
+                channels=channels,
+                tensor_maker=tensor_maker
             )
         else:
             raise AssertionError(

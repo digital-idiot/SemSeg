@@ -26,9 +26,9 @@ def dice_loss(
     # noinspection PyArgumentList
     num_classes = preds.size(1)
     true_onehot = one_hot(
-        tensor=targets,
+        targets,
         num_classes=num_classes
-    ).to(dtype=preds.dtype, device=preds.device)
+    ).type_as(preds)
     true_onehot = true_onehot.permute(0, 3, 1, 2)
 
     if num_classes == 1:

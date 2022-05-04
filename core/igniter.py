@@ -77,10 +77,10 @@ class LightningSemSeg(LightningModule):
             multilabel=False
         )
 
-    def forward(self, x) -> Any:
+    def forward(self, x: Any) -> Any:
         return self.model(x)
 
-    def loss(self, prediction, target) -> Any:
+    def loss(self, prediction: Any, target: Any) -> Any:
         return self.criterion(prediction, target)
 
     def configure_optimizers(self) -> Any:
@@ -93,7 +93,7 @@ class LightningSemSeg(LightningModule):
             out['lr_scheduler'] = scheduler
         return out
 
-    def training_step(self, batch) -> STEP_OUTPUT:
+    def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
         img, lbl = batch
         prd = self.forward(img)
         lss = self.loss(prd, lbl)
@@ -141,7 +141,7 @@ class LightningSemSeg(LightningModule):
             lss = lss.unsqueeze(0)
         return {'loss': lss}
 
-    def validation_step(self, batch) -> Optional[STEP_OUTPUT]:
+    def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
         img, lbl = batch
         prd = self.forward(img)
         lss = self.loss(prd, lbl)
@@ -189,7 +189,7 @@ class LightningSemSeg(LightningModule):
             lss = lss.unsqueeze(0)
         return {'loss': lss}
 
-    def test_step(self, batch) -> Optional[STEP_OUTPUT]:
+    def test_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
         img, lbl = batch
         prd = self.forward(img)
         lss = self.loss(prd, lbl)

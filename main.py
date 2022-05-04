@@ -9,6 +9,7 @@ from helper.assist import WrappedLoss, WrappedOptimizer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from data_factory.dataset import ReadableImagePairDataset
+from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from helper.assist import ShowMetric, LogConfusionMatrix, PredictionWriter
 
@@ -34,9 +35,11 @@ if __name__ == '__main__':
     train_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Urban/Train/Train_DataConf.json"
     ).generate_paired_dataset(
-        image_channels=3,
+        image_channels=(1, 2, 3),
         label_channels=1,
-        transform=None
+        transform=None,
+        image_maker=image_to_tensor,
+        label_maker=label_to_tensor
     )
 
     train_dataset, val_dataset = train_dataset.split(
@@ -47,20 +50,23 @@ if __name__ == '__main__':
     test_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Urban/Validation/Validation_DataConf.json"
     ).generate_paired_dataset(
-        image_channels=3,
+        image_channels=(1, 2, 3),
         label_channels=1,
-        transform=None
+        transform=None,
+        image_maker=image_to_tensor,
+        label_maker=label_to_tensor
     )
 
     predict_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Urban/Test/Test_DataConf.json"
     ).generate_image_dataset(
         transform=None,
-        channels=3,
+        channels=(1, 2, 3),
+        tensor_maker=image_to_tensor
     )
 
     predict_writer = predict_dataset.writable_clone(dst_dir='Predictions')
-    data_loader = IgniteDataModule.from_datasets(
+    data_module = IgniteDataModule.from_datasets(
         train_dataset=train_dataset,
         val_dataset=test_dataset,
         test_dataset=test_dataset,
@@ -107,4 +113,4 @@ if __name__ == '__main__':
         accelerator="gpu",
         devices=-1
     )
-    trainer.fit(model=net)
+    trainer.fit(model=net, datamodule=data_module)
