@@ -35,12 +35,13 @@ class MultilabelClassifier(tnn.Module):
 class DynamicScalePad2D(tnn.Module):
     # noinspection SpellCheckingInspection
     r"""
-        Pre-computes required padding to maintain the following relationships, after
-        convolution operation.
+        Pre-computes required padding to maintain the following relationships,
+        after convolution operation.
             $$H_n = \left\lceil \frac{H_{n-1}}{S} \right\rceil$$
             $$W_n = \left\lceil \frac{W_{n-1}}{S} \right\rceil$$
-        Where $H_{n-1}$ is height of the input tensor and $H_n$ is the height after
-        the convolution operation. $W$ stands for width and has analogous notation.
+        Where $H_{n-1}$ is height of the input tensor and $H_n$ is the
+        height after the convolution operation. $W$ stands for width and has
+        analogous notation.
 
         Reference: https://kutt.it/fbT6na
         """
@@ -165,18 +166,23 @@ class Resize(tnn.Module):
             self,
             target_shape: Union[Tuple[int, ...], List[int]],
             mode: str = 'bilinear',
-            align_corners: bool = False
+            align_corners: bool = False,
+            antialias: bool = False
     ):
         super(Resize, self).__init__()
-        self.target_shape = target_shape
-        self.mode = mode
-        self.align_corners = align_corners
+        self.kwargs = {
+            'size': target_shape,
+            'mode': mode
+        }
+        if mode in {'linear', 'bilinear', 'bicubic', 'trilinear'}:
+            self.kwargs['align_corners'] = align_corners
+
+        if mode in {'bilinear', 'bicubic'}:
+            self.kwargs['antialias'] = antialias
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = tnn.functional.interpolate(
             input=x,
-            size=self.target_shape,
-            mode=self.mode,
-            align_corners=self.align_corners
+            **self.kwargs
         )
         return x

@@ -1,16 +1,12 @@
 from torch import nn as tnn
 from typing import Any, Optional
 from helper.utils import format_dict
-from torchmetrics import ConfusionMatrix
+from helper.assist import WrappedLoss
+from helper.assist import WrappedOptimizer
+from helper.assist import WrappedScheduler
+from helper.metrics import SegmentationMetrics
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.core.lightning import LightningModule
-from helper.assist import (
-    SemSegScalarMetrics,
-    SemSegMultiMetrics,
-    WrappedOptimizer,
-    WrappedLoss,
-    WrappedScheduler
-)
 
 
 class LightningSemSeg(LightningModule):
@@ -20,7 +16,8 @@ class LightningSemSeg(LightningModule):
             optimizer: WrappedOptimizer,
             criterion: WrappedLoss,
             scheduler: WrappedScheduler = None,
-            ignore_index: int = None
+            ignore_index: int = None,
+            normalize_cm: str = 'true'
     ) -> None:
         """
         Wrapper to make model lightning compatible
@@ -29,7 +26,6 @@ class LightningSemSeg(LightningModule):
             optimizer: Optimizer, use partial function for extra args
             criterion: Loss function
             scheduler: scheduler, optional, use partial function for extra args
-            ignore_index: label to be ignored from metrics
         """
         super(LightningSemSeg, self).__init__()
         self.model = model
@@ -37,44 +33,22 @@ class LightningSemSeg(LightningModule):
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.ignore_index = ignore_index
+        self.normalize_cm = normalize_cm
 
-        self.scalar_metrics_training = SemSegScalarMetrics(
-            num_classes=self.model.out_channels
-        )
-        self.scalar_metrics_validation = SemSegScalarMetrics(
-            num_classes=self.model.out_channels
-        )
-        self.scalar_metrics_test = SemSegScalarMetrics(
-            num_classes=self.model.out_channels
-        )
-
-        self.class_metrics_training = SemSegMultiMetrics(
+        self.training_metrics = SegmentationMetrics(
             num_classes=self.model.out_channels,
-            ignore_index=self.ignore_index
+            ignore_index=self.ignore_index,
+            normalize_cm=self.normalize_cm
         )
-        self.class_metrics_validation = SemSegMultiMetrics(
+        self.validation_metrics = SegmentationMetrics(
             num_classes=self.model.out_channels,
-            ignore_index=self.ignore_index
+            ignore_index=self.ignore_index,
+            normalize_cm=self.normalize_cm
         )
-        self.class_metrics_test = SemSegMultiMetrics(
+        self.test_metrics = SegmentationMetrics(
             num_classes=self.model.out_channels,
-            ignore_index=self.ignore_index
-        )
-
-        self.cm_training = ConfusionMatrix(
-            num_classes=self.model.out_channels,
-            normalize='true',
-            multilabel=False
-        )
-        self.cm_validation = ConfusionMatrix(
-            num_classes=self.model.out_channels,
-            normalize='true',
-            multilabel=False
-        )
-        self.cm_test = ConfusionMatrix(
-            num_classes=self.model.out_channels,
-            normalize='true',
-            multilabel=False
+            ignore_index=ignore_index,
+            normalize_cm=normalize_cm
         )
 
     def forward(self, x: Any) -> Any:
@@ -97,6 +71,14 @@ class LightningSemSeg(LightningModule):
         img, lbl = batch
         prd = self.forward(img)
         lss = self.loss(prd, lbl)
+
+        self.log_dict(
+            dictionary=self.training_metrics.loggable_dict(),
+            on_step=False,
+            on_epoch=True,
+            logger=True,
+            sync_dist=False
+        )
         self.class_metrics_training.update(preds=prd, target=lbl)
         self.scalar_metrics_training.update(preds=prd, target=lbl)
         self.cm_training.update(preds=prd, target=lbl)
@@ -136,9 +118,6 @@ class LightningSemSeg(LightningModule):
             sync_dist=False,
             prog_bar=False
         )
-        # noinspection PyUnresolvedReferences
-        if self.trainer.use_dp or self.trainer.use_ddp2:
-            lss = lss.unsqueeze(0)
         return {'loss': lss}
 
     def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
@@ -185,8 +164,8 @@ class LightningSemSeg(LightningModule):
             sync_dist=False
         )
         # noinspection PyUnresolvedReferences
-        if self.trainer.use_dp or self.trainer.use_ddp2:
-            lss = lss.unsqueeze(0)
+        # if self.trainer.use_dp or self.trainer.use_ddp2:
+        #     lss = lss.unsqueeze(0)
         return {'loss': lss}
 
     def test_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
@@ -234,8 +213,8 @@ class LightningSemSeg(LightningModule):
             prog_bar=False
         )
         # noinspection PyUnresolvedReferences
-        if self.trainer.use_dp or self.trainer.use_ddp2:
-            lss = lss.unsqueeze(0)
+        # if self.trainer.use_dp or self.trainer.use_ddp2:
+        #     lss = lss.unsqueeze(0)
         return {'loss': lss}
 
     def predict_step(

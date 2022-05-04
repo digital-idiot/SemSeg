@@ -11,7 +11,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from data_factory.dataset import ReadableImagePairDataset
 from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from helper.assist import ShowMetric, LogConfusionMatrix, PredictionWriter
+from helper.callbacks import ShowMetric, LogConfusionMatrix, PredictionWriter
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
