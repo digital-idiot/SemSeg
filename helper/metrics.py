@@ -27,7 +27,7 @@ class BaseMetric(Metric):
 
     # noinspection SpellCheckingInspection
     @abstractmethod
-    def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
+    def update(self, **kwargs: Any) -> None:
         pass
 
     @abstractmethod
@@ -41,6 +41,61 @@ class BaseMetric(Metric):
     @abstractmethod
     def loggable_dict(self) -> Dict:
         pass
+
+
+class MeanScalarMetric(BaseMetric):
+    def __init__(
+            self,
+            name: str,
+            identifier: str = None,
+            **kwargs
+    ):
+        super(MeanScalarMetric, self).__init__(**kwargs)
+        self.identifier = identifier
+        assert isinstance(name, str), "'name' is not a valid string!"
+        self.name = name
+        self.add_state(
+            name="_metric",
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
+            dist_reduce_fx="sum"
+        )
+        self.add_state(
+            name="_count",
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
+            dist_reduce_fx="sum"
+        )
+
+    def update_identifier(self, identifier: str):
+        self.identifier = identifier
+
+    # noinspection PyAttributeOutsideInit
+    def update(
+            self, score: torch.Tensor,
+            count_factor: Union[int, float] = 1
+    ) -> None:
+        self._metric += score * count_factor
+        self._count += torch.tensor(
+            data=count_factor,
+            dtype=torch.get_default_dtype()
+        )
+
+    def compute(self) -> Any:
+        return self._metric / self._count
+
+    @rank_zero_only
+    def loggable_dict(self) -> Dict:
+        key = (
+            str(self.identifier) + '-' + self.name
+        ) if self.identifier else self.name
+        return {key: self.compute().item()}
+
+    @rank_zero_only
+    def tabular_report(self) -> Any:
+        return pd.DataFrame(
+            data=self.compute().item(),
+            columns=[self.name],
+            index=['Score']
+        )
 
 
 class ClassPrecision(BaseMetric):
@@ -60,10 +115,7 @@ class ClassPrecision(BaseMetric):
         self.mdmc_average = mdmc_average
         self.add_state(
             name="_count",
-            default=torch.zeros(
-                1,
-                dtype=torch.get_default_dtype()
-            ),
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
             dist_reduce_fx="sum"
         )
         self.add_state(
@@ -125,10 +177,7 @@ class ClassRecall(BaseMetric):
         self.mdmc_average = mdmc_average
         self.add_state(
             name="_count",
-            default=torch.zeros(
-                1,
-                dtype=torch.get_default_dtype()
-            ),
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
             dist_reduce_fx="sum"
         )
         self.add_state(
@@ -190,10 +239,7 @@ class ClassIoU(BaseMetric):
         self.absent_score = absent_score
         self.add_state(
             name="_count",
-            default=torch.zeros(
-                1,
-                dtype=torch.get_default_dtype()
-            ),
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
             dist_reduce_fx="sum"
         )
         self.add_state(
@@ -259,10 +305,7 @@ class ClassF1(BaseMetric):
         self.multiclass = multiclass
         self.add_state(
             name="_count",
-            default=torch.zeros(
-                1,
-                dtype=torch.get_default_dtype()
-            ),
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
             dist_reduce_fx="sum"
         )
         self.add_state(
@@ -332,10 +375,7 @@ class ClassAccuracy(BaseMetric):
         self.ignore_index = ignore_index
         self.add_state(
             name="_count",
-            default=torch.zeros(
-                1,
-                dtype=torch.get_default_dtype()
-            ),
+            default=torch.tensor(data=0.0, dtype=torch.get_default_dtype()),
             dist_reduce_fx="sum"
         )
         self.add_state(
@@ -660,6 +700,10 @@ class MixedMetricCollection(MetricCollection):
             report_dict[k] = metric.tabular_report()
         return report_dict
 
+    def reset(self) -> None:
+        for m in self.metrics_dict.values():
+            m.reset()
+
 
 class SegmentationClassMetrics(MetricCollection):
     # noinspection SpellCheckingInspection
@@ -775,8 +819,10 @@ class SegmentationMetrics(MixedMetricCollection):
             num_classes: int,
             ignore_index: int = None,
             normalize_cm: str = 'true',
+            identifier: str = None,
             **kwargs
     ):
+        self.identifier = identifier
         metrics_dict = {
             "class_metrics": SegmentationClassMetrics(
                 num_classes=num_classes,
@@ -796,3 +842,18 @@ class SegmentationMetrics(MixedMetricCollection):
             )
         }
         super(SegmentationMetrics, self).__init__(metrics_dict=metrics_dict)
+
+    def update_identifier(self, identifier: str):
+        self.identifier = identifier
+
+    def loggable_dict(self):
+        log_dict = dict()
+        prefix = (str(self.identifier) + '-') if self.identifier else ''
+        for metric in self.metrics_dict.values():
+            log_dict.update(
+                {
+                    (prefix + k): m
+                    for k, m in metric.loggable_dict().items()
+                }
+            )
+        return log_dict

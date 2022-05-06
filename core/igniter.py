@@ -1,12 +1,16 @@
+import torch
+from typing import Tuple
 from torch import nn as tnn
-from typing import Any, Optional
-from helper.utils import format_dict
+from types import SimpleNamespace
 from helper.assist import WrappedLoss
+from typing import Any, Optional, Dict
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
+from helper.metrics import MeanScalarMetric
 from helper.metrics import SegmentationMetrics
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 from pytorch_lightning.core.lightning import LightningModule
+from helper.metrics import BaseMetric
 
 
 class LightningSemSeg(LightningModule):
@@ -34,27 +38,49 @@ class LightningSemSeg(LightningModule):
         self.scheduler = scheduler
         self.ignore_index = ignore_index
         self.normalize_cm = normalize_cm
-
-        self.training_metrics = SegmentationMetrics(
-            num_classes=self.model.out_channels,
-            ignore_index=self.ignore_index,
-            normalize_cm=self.normalize_cm
-        )
-        self.validation_metrics = SegmentationMetrics(
-            num_classes=self.model.out_channels,
-            ignore_index=self.ignore_index,
-            normalize_cm=self.normalize_cm
-        )
-        self.test_metrics = SegmentationMetrics(
-            num_classes=self.model.out_channels,
-            ignore_index=ignore_index,
-            normalize_cm=normalize_cm
+        self.metric_collection = SimpleNamespace(
+            training={
+                'metrics': SegmentationMetrics(
+                    num_classes=self.model.out_channels,
+                    ignore_index=self.ignore_index,
+                    normalize_cm=self.normalize_cm,
+                    identifier='Training'
+                ),
+                'loss': MeanScalarMetric(
+                    name='Loss',
+                    identifier='Training'
+                )
+            },
+            validation={
+                'metrics': SegmentationMetrics(
+                    num_classes=self.model.out_channels,
+                    ignore_index=self.ignore_index,
+                    normalize_cm=self.normalize_cm,
+                    identifier='Validation'
+                ),
+                'loss': MeanScalarMetric(
+                    name='Loss',
+                    identifier='Validation'
+                )
+            },
+            test={
+                'metrics': SegmentationMetrics(
+                    num_classes=self.model.out_channels,
+                    ignore_index=self.ignore_index,
+                    normalize_cm=self.normalize_cm,
+                    identifier='Test'
+                ),
+                'loss': MeanScalarMetric(
+                    name='Loss',
+                    identifier='Test'
+                )
+            }
         )
 
     def forward(self, x: Any) -> Any:
         return self.model(x)
 
-    def loss(self, prediction: Any, target: Any) -> Any:
+    def loss_function(self, prediction: Any, target: Any) -> Any:
         return self.criterion(prediction, target)
 
     def configure_optimizers(self) -> Any:
@@ -67,159 +93,101 @@ class LightningSemSeg(LightningModule):
             out['lr_scheduler'] = scheduler
         return out
 
-    def training_step(self, batch, batch_idx) -> STEP_OUTPUT:
-        img, lbl = batch
-        prd = self.forward(img)
-        lss = self.loss(prd, lbl)
-
+    def step(
+            self,
+            batch: Tuple[torch.Tensor, torch.Tensor],
+            metrics_dict: Dict[str, BaseMetric]
+    ):
+        image, label = batch
+        # noinspection PyArgumentList
+        current_batch_size = image.size(0)
+        prediction = self.forward(image)
+        current_loss = self.loss_function(prediction, label)
+        loss_score = current_loss.clone().detach().squeeze()
+        metrics_dict['metrics'].update(preds=prediction, target=label)
+        metrics_dict['loss'].update(
+            score=current_loss.clone().detach().squeeze(),
+            count_factor=current_batch_size
+        )
         self.log_dict(
-            dictionary=self.training_metrics.loggable_dict(),
+            dictionary=loss_score,
             on_step=False,
             on_epoch=True,
             logger=True,
             sync_dist=False
         )
-        self.class_metrics_training.update(preds=prd, target=lbl)
-        self.scalar_metrics_training.update(preds=prd, target=lbl)
-        self.cm_training.update(preds=prd, target=lbl)
-        self.log(
-            name='training_loss',
-            value=lss,
-            on_step=True,
-            on_epoch=False,
-            logger=True,
-            sync_dist=False,
-            prog_bar=True
-        )
-        cm_training = format_dict(
-            dictionary=self.class_metrics_training.loggable_dict(),
-            key_prefix='training',
-            key_suffix='',
-            delimiter='_'
-        )
         self.log_dict(
-            dictionary=cm_training,
-            on_step=True,
+            dictionary=self.metrics_dict['loss'].loggable_dict(),
+            on_step=False,
             on_epoch=True,
             logger=True,
             sync_dist=False
         )
-        sm_training = format_dict(
-            dictionary=self.class_metrics_training.loggable_dict(),
-            key_prefix='validation',
-            key_suffix='',
-            delimiter='_'
-        )
-        self.log_dict(
-            dictionary=sm_training,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            sync_dist=False,
-            prog_bar=False
-        )
-        return {'loss': lss}
-
-    def validation_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        img, lbl = batch
-        prd = self.forward(img)
-        lss = self.loss(prd, lbl)
-        self.class_metrics_validation.update(preds=prd, target=lbl)
-        self.scalar_metrics_validation.update(preds=prd, target=lbl)
-        self.cm_validation.update(preds=prd, target=lbl)
         self.log(
-            name='validation_loss',
-            value=lss,
+            name='Current Loss',
+            value=loss_score,
             on_step=True,
             on_epoch=False,
-            logger=True,
-            sync_dist=False,
-            prog_bar=True
-        )
-        cm_validation = format_dict(
-            dictionary=self.class_metrics_validation.loggable_dict(),
-            key_prefix='validation',
-            key_suffix='',
-            delimiter='_'
-        )
-        self.log_dict(
-            dictionary=cm_validation,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            sync_dist=False,
-            prog_bar=False
-        )
-        sm_validation = format_dict(
-            dictionary=self.class_metrics_validation.loggable_dict(),
-            key_prefix='validation',
-            key_suffix='',
-            delimiter='_'
-        )
-        self.log_dict(
-            dictionary=sm_validation,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
+            logger=False,
+            prog_bar=True,
             sync_dist=False
         )
-        # noinspection PyUnresolvedReferences
-        # if self.trainer.use_dp or self.trainer.use_ddp2:
-        #     lss = lss.unsqueeze(0)
-        return {'loss': lss}
+        return current_loss
 
-    def test_step(self, batch, batch_idx) -> Optional[STEP_OUTPUT]:
-        img, lbl = batch
-        prd = self.forward(img)
-        lss = self.loss(prd, lbl)
-        self.class_metrics_test.update(preds=prd, target=lbl)
-        self.scalar_metrics_test.update(preds=prd, target=lbl)
-        self.cm_test.update(preds=prd, target=lbl)
-        self.log(
-            name='test_loss',
-            value=lss,
-            on_step=True,
-            on_epoch=False,
-            logger=True,
-            sync_dist=False,
-            prog_bar=True
-        )
-        cm_test = format_dict(
-            dictionary=self.class_metrics_test.loggable_dict(),
-            key_prefix='test',
-            key_suffix='',
-            delimiter='_'
-        )
-        self.log_dict(
-            dictionary=cm_test,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            sync_dist=False,
-            prog_bar=False
-        )
-        sm_test = format_dict(
-            dictionary=self.class_metrics_test.loggable_dict(),
-            key_prefix='test',
-            key_suffix='',
-            delimiter='_'
-        )
-        self.log_dict(
-            dictionary=sm_test,
-            on_step=True,
-            on_epoch=True,
-            logger=True,
-            sync_dist=False,
-            prog_bar=False
-        )
-        # noinspection PyUnresolvedReferences
-        # if self.trainer.use_dp or self.trainer.use_ddp2:
-        #     lss = lss.unsqueeze(0)
-        return {'loss': lss}
+    def training_step(
+            self,
+            batch: Tuple[torch.Tensor, torch.Tensor],
+            batch_idx: int,
+            dataloader_idx: int = 0,
+    ) -> STEP_OUTPUT:
+        return {
+            'loss': self.step(
+                batch=batch,
+                metrics_dict=self.metric_collection.training
+            )
+        }
+
+    def on_train_epoch_end(self) -> None:
+        self.metric_collection.training['metrics'].reset()
+        self.metric_collection.training['loss'].reset()
+
+    def validation_step(
+            self,
+            batch: Tuple[torch.Tensor, torch.Tensor],
+            batch_idx: int,
+            dataloader_idx: int = 0
+    ) -> Optional[STEP_OUTPUT]:
+        return {
+            'loss': self.step(
+                batch=batch,
+                metrics_dict=self.metric_collection.validation
+            )
+        }
+
+    def on_validation_epoch_end(self) -> None:
+        self.metric_collection.validation['metrics'].reset()
+        self.metric_collection.validation['loss'].reset()
+
+    def test_step(
+            self,
+            batch: Tuple[torch.Tensor, torch.Tensor],
+            batch_idx: int,
+            dataloader_idx: int = 0
+    ) -> Optional[STEP_OUTPUT]:
+        return {
+            'loss': self.step(
+                batch=batch,
+                metrics_dict=self.metric_collection.test
+            )
+        }
+
+    def on_test_epoch_end(self) -> None:
+        self.metric_collection.training['metrics'].reset()
+        self.metric_collection.training['loss'].reset()
 
     def predict_step(
             self,
-            batch: Any,
+            batch: torch.Tensor,
             batch_idx: int,
             dataloader_idx: int = 0
     ) -> Any:
