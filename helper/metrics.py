@@ -28,11 +28,6 @@ class SegmentationMetrics(MetricCollection):
             normalization: str = 'true',
             delimiter: str = '_'
     ):
-        if not prefix:
-            prefix = str()
-        if not postfix:
-            postfix = str()
-
         assert normalization in self.supported_norms, (
             f"Invalid 'normalization': {normalization}!\n" +
             f"Supported: {self.supported_norms}"
@@ -111,8 +106,8 @@ class SegmentationMetrics(MetricCollection):
         }
         super(SegmentationMetrics, self).__init__(
             metrics=metrics_dict,
-            prefix=f"{prefix}{delimiter}",
-            postfix=f"{delimiter}{postfix}",
+            prefix=f"{prefix}{delimiter}" if prefix else None,
+            postfix=f"{delimiter}{postfix}" if postfix else None,
             compute_groups=False  # True when bug is fixed
         )
         self.vector_keys = (
@@ -131,15 +126,19 @@ class SegmentationMetrics(MetricCollection):
     @rank_zero_only
     def wrap_keys(self, keys=Union[str, Sequence[str]]):
         if isinstance(keys, str):
-            return f"{self.prefix}{keys}{self.postfix}"
+            pre = f"{self.prefix}" if self.prefix else ''
+            suf = f"{self.postfix}" if self.postfix else ''
+            return f"{pre}{keys}{suf}"
         else:
             assert isinstance(keys, Sequence), (
                 "'keys' argument is not a string or Sequence"
             )
-            return [
-                f"{self.prefix}{k}{self.postfix}"
-                for k in keys
-            ]
+            names = list()
+            for k in keys:
+                pre = f"{self.prefix}" if self.prefix else ''
+                suf = f"{self.postfix}" if self.postfix else ''
+                names.append(f"{pre}{k}{suf}")
+            return names
 
     # noinspection PyTypeChecker,PyUnresolvedReferences
     @rank_zero_only

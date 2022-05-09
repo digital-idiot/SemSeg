@@ -158,7 +158,7 @@ class LightningSemSeg(LightningModule):
             sync_dist=False
         )
         return {
-            'loss': current_loss
+            'val_loss': current_loss
         }
 
     def on_validation_epoch_end(self) -> None:
@@ -197,7 +197,7 @@ class LightningSemSeg(LightningModule):
             sync_dist=False
         )
         return {
-            'loss': current_loss
+            'test_loss': current_loss
         }
 
     def on_test_epoch_end(self) -> None:

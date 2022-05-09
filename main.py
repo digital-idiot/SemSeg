@@ -97,7 +97,7 @@ if __name__ == '__main__':
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="validation_loss",
+                monitor="val_loss",
                 mode="min",
                 patience=5,
                 strict=True,
