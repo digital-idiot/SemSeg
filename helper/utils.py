@@ -1,31 +1,29 @@
-import warnings
-import numpy as np
 import pandas as pd
 from seaborn import heatmap
+from tabulate import tabulate
 from matplotlib import cm as mpl_cm
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.colors import Colormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 # noinspection PyUnresolvedReferences,SpellCheckingInspection
 def plot_confusion_matrix(
-        cm: np.ndarray,
-        normed=True,
-        annot=True,
-        fig_size=10,
-        dpi=300,
-        font_size=22,
-        fmt='.2f',
-        cmap=mpl_cm.plasma,
-        cbar=True,
-        key=None
+        cm_df: pd.DataFrame,
+        annot: bool = True,
+        fig_size: float = 10,
+        dpi: float = 300,
+        font_size: int = 22,
+        fmt: str = '.2f',
+        cmap: Colormap = mpl_cm.plasma,
+        cbar: bool = True,
+        key: str = None
 ) -> Figure:
     """
     Makes pretty plot of confusion matrix
     Args:
-        cm: confusion matrix (2D square matrix)
-        normed: if confusion matrix is normalized
+        cm_df: confusion matrix DataFrame
         annot: annotation flag
         fig_size: FIgure Size
         dpi: DPI of the figure
@@ -37,25 +35,6 @@ def plot_confusion_matrix(
     Returns:
         Instance of matplotlib.figure.Figure containing the plot
     """
-    assert (
-            len(cm.shape) == 2
-    ) and (
-            len(set(cm.shape)) == 1
-    ), (
-        f"The confusion matrix has invalid shape: {cm.shape}" +
-        "Expected a 2D square matrix"
-    )
-    cm = cm.astype(float)
-    val_min = None
-    val_max = None
-    c = None
-    if normed:
-        val_min = 0
-        val_max = 0
-        c = 0.5
-    n = cm.shape[0]
-    labels = [f'$C_{str(i).zfill(len(str(n - 1)))}$' for i in range(n)]
-    df = pd.DataFrame(data=cm, columns=labels, index=labels)
     # noinspection PyUnresolvedReferences
     plt.rcParams.update({'font.size': font_size})
     fig = plt.figure(figsize=(fig_size, (fig_size * 1.055)), dpi=dpi)
@@ -70,11 +49,8 @@ def plot_confusion_matrix(
     cax = divider.append_axes("right", size="5%", pad=0.5)
     ax.xaxis.tick_top()
     heatmap(
-        data=df,
+        data=cm_df,
         annot=annot,
-        vmin=val_min,
-        vmax=val_max,
-        center=c,
         fmt=fmt,
         cmap=cmap,
         cbar=cbar,
@@ -85,28 +61,62 @@ def plot_confusion_matrix(
     return fig
 
 
-def format_float(x: float, n: int = 2) -> str:
-    return f"{x:.{n}f}"
+def format_report(report_dict: dict):
+    if report_dict['prefix'] and report_dict['postfix']:
+        key = f"Report: {report_dict['prefix']} | {report_dict['postfix']}"
+    elif report_dict['prefix']:
+        key = f"Report: {report_dict['prefix']}"
+    elif report_dict['postfix']:
+        key = f"Report: {report_dict['postfix']}"
+    else:
+        key = "Report"
+    symbol_length = 80 - (len(key) + 2)
+    pre = symbol_length // 2
+    post = symbol_length - pre
+    report_start = f"\n{'=' * pre} {key} {'=' * post}"
 
+    end_key = "Report End"
+    symbol_length = 80 - (len(end_key) + 2)
+    pre = symbol_length // 2
+    post = symbol_length - pre
+    report_end = f"{'=' * pre} {end_key} {'=' * post}\n"
 
-def format_dict(
-        dictionary: dict,
-        key_prefix: str = '',
-        key_suffix: str = '',
-        delimiter: str = '_',
-        case: str = None
-) -> dict:
-    formatted_dict = dict()
-    key_prefix = f"{key_prefix}{delimiter}" if key_prefix else ''
-    key_suffix = f"{delimiter}{key_suffix}" if key_suffix else ''
-    for key, value in dictionary.items():
-        k = f"{key_prefix}{key}{key_suffix}"
-        if case == 'lower':
-            k = k.lower()
-        if case == 'upper':
-            k = k.upper()
-        else:
-            if case:
-                warnings.warn(f'Unknown case: {case}! Ignoring..')
-        formatted_dict[f"{key_prefix}{key}{key_suffix}"] = value
-    return formatted_dict
+    scalar_table = tabulate(
+        tabular_data=report_dict['quality_report'],
+        headers='keys',
+        showindex=True,
+        tablefmt="fancy_grid",
+        floatfmt='.2f',
+        numalign='center',
+        stralign='left'
+    )
+
+    class_table = tabulate(
+        tabular_data=report_dict['class_report'],
+        headers='keys',
+        showindex=True,
+        tablefmt="fancy_grid",
+        floatfmt='.2f',
+        numalign='center',
+        stralign='left',
+    )
+
+    # noinspection SpellCheckingInspection
+    confmat_table = tabulate(
+        tabular_data=report_dict['confusion_matrix'],
+        headers='keys',
+        showindex=True,
+        tablefmt="fancy_grid",
+        floatfmt='.2f',
+        numalign='center',
+        stralign='left',
+    )
+
+    report = "\n\n".join([
+        report_start,
+        f"Quality Scores:\n{scalar_table}",
+        f"Class-wise Metrics:\n{class_table}",
+        f"Confusion Matrix:\n{confmat_table}",
+        report_end
+    ])
+    return report

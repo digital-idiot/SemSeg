@@ -1,9 +1,12 @@
+import torch
+import pandas as pd
 from typing import Any
 from typing import Union
 from typing import Optional
 from typing import Sequence
 from matplotlib import cm as mpl_cm
 from pytorch_lightning import Trainer
+from helper.utils import format_report
 from pytorch_lightning import LightningModule
 from helper.utils import plot_confusion_matrix
 from data_factory.dataset import WritableDataset
@@ -11,6 +14,7 @@ from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities import rank_zero_info
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.callbacks import BasePredictionWriter
+from pytorch_lightning.loggers.base import LightningLoggerBase
 
 
 class PredictionWriter(BasePredictionWriter):
@@ -100,43 +104,56 @@ class PredictionWriter(BasePredictionWriter):
 class ShowMetric(Callback):
     def __init__(self):
         super(ShowMetric, self).__init__()
-        self.report = None
+        self.reports = dict()
 
-    def on_train_epoch_end(self, trainer, pl_module):
-        scalar_metrics = trainer.callback_metrics['scalar_metrics_training']
-        multi_metrics = trainer.callback_metrics['class_metrics_training']
-        scalar_report = scalar_metrics.tabular_report()
-        tabular_report = multi_metrics.tabular_report()
-        self.report = ' \n '.join(
-            [
-                scalar_report, tabular_report
-            ]
+    @rank_zero_only
+    def prepare_report(
+            self,
+            tabular_dict: dict,
+            loss: Union[float, torch.Tensor],
+            key: str
+    ):
+        loss_df = pd.DataFrame(
+            data=[loss.item()], index=['Score'], columns=['Mean Loss']
         )
-        rank_zero_info(self.report)
+        tabular_dict['quality_report'] = pd.concat(
+            objs=[tabular_dict['quality_report'], loss_df], axis=1
+        )
+        tabular_dict['quality_report'].index.name = r"Metric"
+        self.reports[key] = format_report(tabular_dict)
 
-    def on_validation_epoch_end(self, trainer, pl_module):
-        scalar_metrics = trainer.callback_metrics['scalar_metrics_validation']
-        multi_metrics = trainer.callback_metrics['class_metrics_validation']
-        scalar_report = scalar_metrics.tabular_report()
-        tabular_report = multi_metrics.tabular_report()
-        self.report = ' \n '.join(
-            [
-                scalar_report, tabular_report
-            ]
+    def on_train_epoch_end(
+            self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        key = 'Training'
+        self.prepare_report(
+            tabular_dict=pl_module.training_metrics.tabular_report(),
+            loss=pl_module.training_loss.compute(),
+            key=key
         )
-        rank_zero_info(self.report)
+        rank_zero_info(self.reports[key])
 
-    def on_test_epoch_end(self, trainer, pl_module):
-        scalar_metrics = trainer.callback_metrics['scalar_metrics_test']
-        multi_metrics = trainer.callback_metrics['class_metrics_test']
-        scalar_report = scalar_metrics.tabular_report()
-        tabular_report = multi_metrics.tabular_report()
-        self.report = ' \n '.join(
-            [
-                scalar_report, tabular_report
-            ]
+    def on_validation_epoch_end(
+            self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        key = 'Validation'
+        self.prepare_report(
+            tabular_dict=pl_module.validation_metrics.tabular_report(),
+            loss=pl_module.validation_loss.compute(),
+            key=key
         )
-        rank_zero_info(self.report)
+        rank_zero_info(self.reports[key])
+
+    def on_test_epoch_end(
+            self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        key = 'Test'
+        self.prepare_report(
+            tabular_dict=pl_module.test_metrics.tabular_report(),
+            loss=pl_module.test_loss.compute(),
+            key=key
+        )
+        rank_zero_info(self.reports[key])
 
 
 class LogConfusionMatrix(Callback):
@@ -163,61 +180,52 @@ class LogConfusionMatrix(Callback):
         }
 
     @rank_zero_only
+    def log_figure(
+            self, cm_df: pd.DataFrame, key: str, logger: LightningLoggerBase
+    ):
+        fig = plot_confusion_matrix(cm_df=cm_df, key=key, **self.options)
+        # noinspection PyUnresolvedReferences
+        logger.experiment.add_figure(
+            tag='Training-Confusion_Matrix',
+            figure=fig,
+            close=True
+        )
+
     def on_train_epoch_end(
             self,
             trainer: Trainer,
             pl_module: LightningModule,
     ) -> None:
-        cm = trainer.callback_metrics['cm_training']
-        self.options['normed'] = True if (
-                cm.normalize in {None, 'none'}
-        ) else False
-        cm = cm.compute().clone().detach().cpu().numpy()
-        self.options['key'] = 'Training'
-        fig = plot_confusion_matrix(cm=cm, **self.options)
-        # noinspection PyUnresolvedReferences
-        trainer.logger.experiment.add_figure(
-            tag='confusion_matrix_training',
-            figure=fig,
-            close=True
+        metric_collection = pl_module.training_metrics.tabular_report()
+        confusion_matrix = metric_collection['confusion_matrix']
+        self.log_figure(
+            cm_df=confusion_matrix,
+            key='Training',
+            logger=trainer.logger
         )
 
-    @rank_zero_only
     def on_validation_epoch_end(
             self,
             trainer: Trainer,
             pl_module: LightningModule
     ) -> None:
-        cm = trainer.callback_metrics['cm_validation']
-        self.options['normed'] = True if (
-                cm.normalize in {None, 'none'}
-        ) else False
-        cm = cm.compute().clone().detach().cpu().numpy()
-        self.options['key'] = 'Validation'
-        fig = plot_confusion_matrix(cm=cm, **self.options)
-        # noinspection PyUnresolvedReferences
-        trainer.logger.experiment.add_figure(
-            tag='confusion_matrix_validation',
-            figure=fig,
-            close=True
+        metric_collection = pl_module.validation_metrics.tabular_report()
+        confusion_matrix = metric_collection['confusion_matrix']
+        self.log_figure(
+            cm_df=confusion_matrix,
+            key='Training',
+            logger=trainer.logger
         )
 
-    @rank_zero_only
     def on_test_epoch_end(
             self,
             trainer: Trainer,
             pl_module: LightningModule
     ) -> None:
-        cm = trainer.callback_metrics['cm_test']
-        self.options['normed'] = True if (
-                cm.normalize in {None, 'none'}
-        ) else False
-        cm = cm.compute().clone().detach().cpu().numpy()
-        self.options['key'] = 'Testing'
-        fig = plot_confusion_matrix(cm=cm, **self.options)
-        # noinspection PyUnresolvedReferences
-        trainer.logger.experiment.add_figure(
-            tag='confusion_matrix_test',
-            figure=fig,
-            close=True
+        metric_collection = pl_module.test_metrics.tabular_report()
+        confusion_matrix = metric_collection['confusion_matrix']
+        self.log_figure(
+            cm_df=confusion_matrix,
+            key='Training',
+            logger=trainer.logger
         )

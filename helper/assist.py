@@ -1,13 +1,13 @@
 import torch
 from typing import Any
+from typing import Union
 from typing import Callable
 from torchmetrics import Metric
 from torch.optim.optimizer import Optimizer
-from helper.metrics import SegmentationMetrics
 
 
 class WrappedOptimizer(object):
-    def __init__(self, optimizer: Optimizer, **opt_params):
+    def __init__(self, optimizer: Union[Optimizer, Any], **opt_params):
         self.opt = optimizer
         self.params = opt_params
 

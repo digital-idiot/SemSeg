@@ -2,16 +2,20 @@ from core.dnet import DNet
 from loss.seg_loss import dice_loss
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
+from helper.assist import WrappedLoss
+from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
+from helper.assist import WrappedOptimizer
+from helper.callbacks import PredictionWriter
+from helper.callbacks import LogConfusionMatrix
 from data_factory.dataset import DatasetConfigurator
 from data_factory.data_module import IgniteDataModule
-from helper.assist import WrappedLoss, WrappedOptimizer
+from pytorch_lightning.callbacks import RichProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from data_factory.dataset import ReadableImagePairDataset
 from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-from helper.callbacks import ShowMetric, LogConfusionMatrix, PredictionWriter
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
@@ -72,7 +76,7 @@ if __name__ == '__main__':
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         num_workers=16,
-        batch_size=10,
+        batch_size=25,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
 
@@ -80,6 +84,7 @@ if __name__ == '__main__':
     trainer = Trainer(
         logger=TensorBoardLogger(save_dir="logs", name='FloodNet'),
         callbacks=[
+            RichProgressBar(),
             ShowMetric(),
             LogConfusionMatrix(),
             PredictionWriter(writable_datasets=[predict_writer]),
@@ -102,7 +107,7 @@ if __name__ == '__main__':
             )
         ],
         check_val_every_n_epoch=1,
-        detect_anomaly=True,
+        detect_anomaly=False,
         log_every_n_steps=10,
         enable_progress_bar=True,
         precision=16,
@@ -113,4 +118,5 @@ if __name__ == '__main__':
         accelerator="gpu",
         devices=-1
     )
+    print(net.children())
     trainer.fit(model=net, datamodule=data_module)
