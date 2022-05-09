@@ -1,3 +1,4 @@
+import warnings
 from core.dnet import DNet
 from loss.seg_loss import dice_loss
 from torch_optimizer import AdaBound
@@ -13,9 +14,13 @@ from data_factory.data_module import IgniteDataModule
 from pytorch_lightning.callbacks import RichProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.strategies.ddp import DDPStrategy
 from data_factory.dataset import ReadableImagePairDataset
 from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+
+warnings.filterwarnings('error', category=UserWarning)
+
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
@@ -97,7 +102,7 @@ if __name__ == '__main__':
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="val_loss",
+                monitor="Validation-Mean_Loss",
                 mode="min",
                 patience=5,
                 strict=True,
@@ -107,16 +112,16 @@ if __name__ == '__main__':
             )
         ],
         check_val_every_n_epoch=1,
+        num_sanity_val_steps=0,
         detect_anomaly=False,
         log_every_n_steps=10,
         enable_progress_bar=True,
         precision=16,
-        strategy='ddp',
+        strategy=DDPStrategy(find_unused_parameters=False),
         sync_batchnorm=False,
         enable_model_summary=False,
         max_epochs=100,
         accelerator="gpu",
         devices=-1
     )
-    print(net.children())
     trainer.fit(model=net, datamodule=data_module)

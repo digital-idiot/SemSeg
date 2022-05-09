@@ -82,7 +82,7 @@ class IgniteDataModule(LightningDataModule):
                 ]
             return dataloader(
                 ds=val_dataset,
-                shuffle_flag=shuffle,
+                shuffle_flag=False,
                 collate=collate_fn
             )
 
