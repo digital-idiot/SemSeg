@@ -122,9 +122,9 @@ class LightningSemSeg(LightningModule):
             'loss': current_loss
         }
 
-    def on_train_epoch_end(self) -> None:
-        self.training_metrics.reset()
-        self.training_loss.reset()
+    # def on_train_epoch_end(self) -> None:
+    #     self.training_metrics.reset()
+    #     self.training_loss.reset()
 
     def validation_step(
             self,
@@ -161,9 +161,9 @@ class LightningSemSeg(LightningModule):
             'val_loss': current_loss
         }
 
-    def on_validation_epoch_end(self) -> None:
-        self.validation_metrics.reset()
-        self.validation_loss.reset()
+    # def on_validation_epoch_end(self) -> None:
+    #     self.validation_metrics.reset()
+    #     self.validation_loss.reset()
 
     def test_step(
             self,

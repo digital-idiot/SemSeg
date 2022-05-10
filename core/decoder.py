@@ -32,7 +32,7 @@ class Decoder(tnn.Module):
             output_padding=0,
             groups=1,
             bias=True,
-            activation=tnn.Mish(True)
+            activation=tnn.ReLU(True)
         )  # ~(H), ~(W)
 
         self.feature_reducer = ConvolutionBlock(
@@ -44,7 +44,7 @@ class Decoder(tnn.Module):
             padding_mode='zeros',
             groups=1,
             bias=True,
-            activation=tnn.Mish(True)
+            activation=tnn.ReLU(True)
         )
 
     def forward(self, features: Sequence[torch.Tensor]) -> torch.Tensor:
@@ -54,8 +54,7 @@ class Decoder(tnn.Module):
         b = tnf.interpolate(
             input=x,
             size=(a.size(-2), a.size(-1)),
-            mode='bilinear',
-            align_corners=False
+            mode='nearest'
         )  # ~4x
         b = self.feature_reducer(b)
-        return a + b
+        return a * b

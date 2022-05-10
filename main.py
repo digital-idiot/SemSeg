@@ -96,7 +96,7 @@ if __name__ == '__main__':
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename='FloodNet-{epoch}-{validation_loss:.3f}',
-                monitor='validation_loss',
+                monitor='Validation-Mean_Loss',
                 save_top_k=2,
                 save_last=True,
                 save_on_train_epoch_end=False
@@ -107,7 +107,7 @@ if __name__ == '__main__':
                 patience=5,
                 strict=True,
                 check_finite=True,
-                min_delta=9e-4,
+                min_delta=1e-3,
                 check_on_train_epoch_end=False,
             )
         ],
