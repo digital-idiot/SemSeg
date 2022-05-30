@@ -38,13 +38,12 @@ class Decoder(tnn.Module):
         self.feature_reducer = ConvolutionBlock(
             inc=(2 * out_channels),
             outc=out_channels,
-            ks=(1, 1),
+            kernel_size=(1, 1),
             stride=(1, 1),
             dilation=(1, 1),
             padding_mode='zeros',
             groups=1,
-            bias=True,
-            activation=tnn.ReLU(True)
+            bias=True
         )
 
     def forward(self, features: Sequence[torch.Tensor]) -> torch.Tensor:

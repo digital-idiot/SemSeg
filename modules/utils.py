@@ -17,3 +17,29 @@ def one_hot_encode_label(
     x = one_hot(x, n_class)
     x = x.moveaxis(source=-1, destination=1)
     return x.contiguous()
+
+
+def get_shape(tensor: torch.Tensor):
+    shape = tuple(tensor.shape)
+    if torch.onnx.is_in_onnx_export():
+        shape = tuple(s.item() for s in shape)
+    return shape
+
+
+def make_divisible(v, divisor: int, min_value: int = None):
+    """
+    This function is taken from the original tf repo.
+    It ensures that all layers have a channel number that is divisible by 8
+    It can be seen here: https://kutt.it/bk7IRJ
+    :param v:
+    :param divisor:
+    :param min_value:
+    :return:
+    """
+    if min_value is None:
+        min_value = divisor
+    new_v = max(min_value, ((int(v + divisor / 2) // divisor) * divisor))
+    # Make sure that round down does not go down by more than 10%.
+    if new_v < 0.9 * v:
+        new_v += divisor
+    return new_v

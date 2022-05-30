@@ -5,9 +5,6 @@ def class_weights(
         x: torch.Tensor,
         class_ids: torch.Tensor
 ):
-    assert isinstance(x, torch.Tensor), (
-        "'x' is not a valid Tensor!"
-    )
     x = x.view(-1).to(dtype=torch.long)
     class_ids = class_ids.view(-1).to(dtype=torch.long)
     n_classes = class_ids.numel()
