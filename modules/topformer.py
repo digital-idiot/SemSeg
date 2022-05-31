@@ -3,11 +3,13 @@ from torch import nn
 from typing import Any
 from typing import Dict
 from typing import Union
+from copy import deepcopy
 from typing import Sequence
 from typing import FrozenSet
 import torch.nn.functional as tnf
 from collections import OrderedDict
 from modules.utils import get_shape
+from modules.helpers import Registry
 from modules.helpers import DropPath
 from modules.layers import BranchModule
 from modules.utils import make_divisible
@@ -16,7 +18,10 @@ from modules.layers import ParallelModule
 from modules.blocks import ConvolutionBlock
 
 
-class Mlp(nn.Module):
+__all__ = ['TopFormerBackBone', 'TopFormerModule']
+
+
+class FeedForwardNetwork(nn.Module):
     # noinspection SpellCheckingInspection
     def __init__(
             self,
@@ -25,66 +30,84 @@ class Mlp(nn.Module):
             out_features: int = None,
             drop_rate: float = 0.0,
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu'}.items()),
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items())
     ):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
 
-        self.fc_a = ConvolutionBlock(
-            ndim=2,
-            inc=in_features,
-            outc=out_features,
-            kernel_size=(1, 1),
-            stride=(1, 1),
-            dilation=(1, 1),
-            padding='auto',
-            groups=1,
-            norm_cfg=norm_cfg,
-            act_cfg=None,
-            order='CNA'
+        self.net = nn.Sequential()
+
+        self.net.add_module(
+            name='preconv',
+            module=ConvolutionBlock(
+                ndim=2,
+                inc=in_features,
+                outc=out_features,
+                kernel_size=(1, 1),
+                stride=(1, 1),
+                dilation=(1, 1),
+                padding='auto',
+                padding_mode='zeros',
+                groups=1,
+                bias=False,
+                norm_cfg=norm_cfg,
+                act_cfg=None,
+                spectral_norm=False,
+                order='CNA'
+            )
         )
 
-        self.dwconv = ConvolutionBlock(
-            ndim=2,
-            inc=hidden_features,
-            outc=hidden_features,
-            kernel_size=(3, 3),
-            stride=(1, 1),
-            dilation=(1, 1),
-            padding='auto',
-            groups=hidden_features,
-            norm_cfg=None,
-            act_cfg=act_cfg,
-            order='CNA'
+        self.net.add_module(
+            name='dwconv',
+            module=ConvolutionBlock(
+                ndim=2,
+                inc=hidden_features,
+                outc=hidden_features,
+                kernel_size=(3, 3),
+                stride=(1, 1),
+                dilation=(1, 1),
+                padding='auto',
+                padding_mode='zeros',
+                groups=hidden_features,
+                bias=True,
+                norm_cfg=frozenset({'alias': 'batchnorm_2d'}.items()),
+                act_cfg=act_cfg,
+                spectral_norm=False,
+                order='CNA'
+            )
         )
 
-        self.fc_b = ConvolutionBlock(
-            ndim=2,
-            inc=hidden_features,
-            outc=out_features,
-            kernel_size=(1, 1),
-            stride=(1, 1),
-            dilation=(1, 1),
-            padding='auto',
-            groups=1,
-            norm_cfg=norm_cfg,
-            act_cfg=None,
-            order='CNA'
+        self.net.add_module(name='dwdropout', module=nn.Dropout(drop_rate))
+
+        self.net.add_module(
+            name='postconv',
+            module=ConvolutionBlock(
+                ndim=2,
+                inc=hidden_features,
+                outc=out_features,
+                kernel_size=(1, 1),
+                stride=(1, 1),
+                dilation=(1, 1),
+                padding='auto',
+                padding_mode='zeros',
+                groups=1,
+                bias=False,
+                norm_cfg=norm_cfg,
+                act_cfg=None,
+                spectral_norm=False,
+                order='CNA'
+            )
         )
-        self.dropout = nn.Dropout(drop_rate)
+
+        self.net.add_module(name='postdropout', module=nn.Dropout(drop_rate))
 
     def forward(self, x):
-        x = self.fc_a(x)
-        x = self.dwconv(x)
-        x = self.dropout(x)
-        x = self.fc_b(x)
-        x = self.dropout(x)
-        return x
+        return self.net(x)
 
 
 class InvertedResidual(nn.Module):
@@ -93,14 +116,14 @@ class InvertedResidual(nn.Module):
             self,
             inc: int,
             outc: int,
-            ks: int,
+            kernel_size: int,
             stride: int,
             expand_ratio: int,
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu'}.items()),
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items())
     ) -> None:
         super(InvertedResidual, self).__init__()
@@ -112,10 +135,10 @@ class InvertedResidual(nn.Module):
         self.residual_connect = (self.stride == 1) and (inc == outc)
         self.out_channels = outc
         self.scaled = stride > 1
-        self.conv = nn.Sequential()
+        self.net = nn.Sequential()
         if expand_ratio != 1:
             # noinspection PyTypeChecker
-            self.conv.add_module(
+            self.net.add_module(
                 name='conv_in',
                 module=ConvolutionBlock(
                     ndim=2,
@@ -127,27 +150,35 @@ class InvertedResidual(nn.Module):
                     groups=1,
                     norm_cfg=norm_cfg,
                     act_cfg=act_cfg,
-                    padding='auto'
+                    padding='auto',
+                    padding_mode='zeros',
+                    bias=False,
+                    spectral_norm=False,
+                    order='CNA'
                 )
             )
         # noinspection PyTypeChecker
-        self.conv.add_module(
+        self.net.add_module(
             name='conv_dw',
             module=ConvolutionBlock(
                 ndim=2,
                 inc=hidden_dim,
                 outc=hidden_dim,
-                kernel_size=ks,
-                stride=(1, 1),
+                kernel_size=kernel_size,
+                stride=stride,
                 dilation=(1, 1),
                 groups=hidden_dim,
                 norm_cfg=norm_cfg,
                 act_cfg=act_cfg,
-                padding='auto'
+                padding='auto',
+                padding_mode='zeros',
+                bias=False,
+                spectral_norm=False,
+                order='CNA'
             )
         )
         # noinspection PyTypeChecker
-        self.conv.add_module(
+        self.net.add_module(
             name='conv_out',
             module=ConvolutionBlock(
                 ndim=2,
@@ -159,15 +190,19 @@ class InvertedResidual(nn.Module):
                 groups=1,
                 norm_cfg=dict(norm_cfg),
                 act_cfg=None,
-                padding='auto'
+                padding='auto',
+                padding_mode='zeros',
+                bias=False,
+                spectral_norm=False,
+                order='CNA'
             )
         )
 
     def forward(self, x):
         if self.residual_connect:
-            return x + self.conv(x)
+            return x + self.net(x)
         else:
-            return self.conv(x)
+            return self.net(x)
 
 
 class TokenPyramidModule(nn.Module):
@@ -182,10 +217,10 @@ class TokenPyramidModule(nn.Module):
             input_channels: int = 3,
             init_features: int = 16,
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu'}.items()),
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items()),
             width_multiplier: float = 1.0
     ):
@@ -197,34 +232,28 @@ class TokenPyramidModule(nn.Module):
                     for i, conf in enumerate(stage_configs)
                 ]
             )
-
-        self.stem = nn.Sequential(
-            OrderedDict(
-                [
-                    (
-                        'stem',
-                        ConvolutionBlock(
-                            inc=input_channels,
-                            outc=init_features,
-                            ndim=2,
-                            kernel_size=(3, 3),
-                            stride=(2, 2),
-                            dilation=(1, 1),
-                            padding='auto',
-                            padding_mode='zeros',
-                            groups=1,
-                            bias=False,
-                            norm_cfg=norm_cfg,
-                            act_cfg=act_cfg,
-                            spectral_norm=False,
-                            order='CNA'
-                        )
-                    )
-                ]
+        self.net = nn.Sequential()
+        self.net.add_module(
+            name='stem',
+            module=ConvolutionBlock(
+                inc=input_channels,
+                outc=init_features,
+                ndim=2,
+                kernel_size=(3, 3),
+                stride=(2, 2),
+                dilation=(1, 1),
+                padding='auto',
+                padding_mode='zeros',
+                groups=1,
+                bias=False,
+                norm_cfg=norm_cfg,
+                act_cfg=act_cfg,
+                spectral_norm=False,
+                order='CNA'
             )
         )
 
-        self.staging_module = StagingModule()
+        staging_module = StagingModule()
         for name, params_dict in stage_configs.items():
             layer_params = {
                 "inc": init_features,
@@ -232,23 +261,26 @@ class TokenPyramidModule(nn.Module):
                 "norm_cfg": norm_cfg
             }
             params_dict['outc'] = make_divisible(
-                v=(params_dict.pop('basec') * width_multiplier),
+                value=(params_dict.pop('base_channels') * width_multiplier),
                 divisor=8,
                 min_value=8
             )
             layer_params.update(params_dict)
-            self.staging_module.add_module(
+            staging_module.add_module(
                 name=name,
                 module=InvertedResidual(**layer_params)
             )
             init_features = params_dict['outc']
+        self.net.add_module(
+            name='staging_module',
+            module=staging_module
+        )
 
     def forward(self, x):
-        x = self.stem(x)
-        return self.staging_module(x)
+        return self.net(x)
 
 
-class Attention(torch.nn.Module):
+class AttentionBlock(torch.nn.Module):
     # noinspection SpellCheckingInspection
     def __init__(
             self,
@@ -257,10 +289,10 @@ class Attention(torch.nn.Module):
             num_heads: int,
             attn_ratio: Union[float, int] = 4.0,
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = None,
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items()),
     ):
         super().__init__()
@@ -330,7 +362,7 @@ class Attention(torch.nn.Module):
             )
         )
 
-        self.proj = ConvolutionBlock(
+        self.projection = ConvolutionBlock(
             inc=self.dh,
             outc=dim,
             ndim=2,
@@ -363,10 +395,10 @@ class Attention(torch.nn.Module):
                 b, self.num_heads, self.d, (h * w)
             ).permute(0, 1, 3, 2)
         ).permute(0, 1, 3, 2).reshape(b, self.dh, h, w)
-        return self.proj(x)
+        return self.projection(x)
 
 
-class Block(nn.Module):
+class SemanticsExtractorBlock(nn.Module):
 
     # noinspection SpellCheckingInspection
     def __init__(
@@ -379,10 +411,10 @@ class Block(nn.Module):
             drop_rate=0.0,
             drop_path=0.0,
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu'}.items()),
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items())
     ):
         super().__init__()
@@ -390,8 +422,8 @@ class Block(nn.Module):
         self.num_heads = num_heads
         self.mlp_ratio = mlp_ratio
 
-        self.attn = Attention(
-            dim,
+        self.attn = AttentionBlock(
+            dim=dim,
             key_dim=key_dim,
             num_heads=num_heads,
             attn_ratio=attn_ratio,
@@ -401,9 +433,9 @@ class Block(nn.Module):
 
         self.drop_path = DropPath(
             drop_path
-        ) if drop_path > 0. else nn.Identity()
+        ) if drop_path > 0 else nn.Identity()
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(
+        self.mlp = FeedForwardNetwork(
             in_features=dim,
             hidden_features=mlp_hidden_dim,
             out_features=None,
@@ -418,7 +450,7 @@ class Block(nn.Module):
         return x
 
 
-class BasicLayer(nn.Module):
+class SemanticsExtractorModule(nn.Module):
     # noinspection SpellCheckingInspection
     def __init__(
             self,
@@ -431,10 +463,10 @@ class BasicLayer(nn.Module):
             drop_rate: float = 0.0,
             drop_path: Union[float, Sequence[float]] = 0.0,
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items()),
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = None
     ):
         super().__init__()
@@ -444,8 +476,8 @@ class BasicLayer(nn.Module):
         # self.transformer_blocks = nn.ModuleList()
         for i in range(self.block_count):
             self.transformer_sequence.add_module(
-                name=f'block_{i+1}',
-                module=Block(
+                name=f'extractor_{i+1}',
+                module=SemanticsExtractorBlock(
                     dim=embedding_dim,
                     key_dim=key_dim,
                     num_heads=num_heads,
@@ -498,8 +530,12 @@ class InjectionDotSum(nn.Module):
             self,
             inc: int,
             outc: int,
-            norm_cfg=frozenset({'alias': 'batchnorm_2d'}.items()),
-            act_cfg=frozenset({'alias': 'hsigmoid'}.items())
+            norm_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'batchnorm_2d'}.items()),
+            act_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'hsigmoid'}.items())
     ) -> None:
 
         super(InjectionDotSum, self).__init__()
@@ -614,8 +650,12 @@ class InjectionDotSumCBR(nn.Module):
             self,
             inc: int,
             outc: int,
-            norm_cfg=frozenset({'alias': 'batchnorm_2d'}.items()),
-            act_cfg=frozenset({'alias': 'hsigmoid'}.items())
+            norm_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'batchnorm_2d'}.items()),
+            act_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'hsigmoid'}.items())
     ) -> None:
         """
         local_embedding: conv-bn-relu
@@ -731,7 +771,9 @@ class FuseBlockSum(nn.Module):
             self,
             inc: int,
             outc: int,
-            norm_cfg=frozenset({'alias': 'batchnorm_2d'}.items())
+            norm_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'batchnorm_2d'}.items())
     ) -> None:
         super(FuseBlockSum, self).__init__()
 
@@ -793,8 +835,12 @@ class FuseBlockDot(nn.Module):
             self,
             inc: int,
             outc: int,
-            norm_cfg=frozenset({'alias': 'batchnorm_2d'}.items()),
-            act_cfg=frozenset({'alias': 'hsigmoid'}.items())
+            norm_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'batchnorm_2d'}.items()),
+            act_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'hsigmoid'}.items())
     ) -> None:
         super(FuseBlockDot, self).__init__()
 
@@ -850,17 +896,65 @@ class FuseBlockDot(nn.Module):
         return out
 
 
-# TODO: Create a registry
-SIM_BLOCK = {
-    "fuse_sum": FuseBlockSum,
-    "fuse_multi": FuseBlockDot,
+class SubmoduleRegistry(Registry):
+    __registry = {
+        'fuse_sum': FuseBlockSum,
+        'fuse_dot': FuseBlockDot,
+        'dot_sum': InjectionDotSum,
+        'dot_sum_cbr': InjectionDotSumCBR,
+    }
 
-    "multi_sum": InjectionDotSum,
-    "multi_sum_cbr": InjectionDotSumCBR,
-}
+    def __init__(self):
+        # noinspection SpellCheckingInspection
+        self._current_registry = deepcopy(self.__registry)
+
+    @classmethod
+    def register(
+            cls, alias: str, layer: nn.Module, overwrite: bool = False
+    ) -> None:
+        if overwrite or not(alias in cls.__registry.keys()):
+            cls.__registry[alias] = layer
+        else:
+            raise AssertionError(
+                f"Alias ({alias}) is already exist in the registry!" +
+                "Try different alias or use overwrite flag."
+            )
+
+    def add(
+            self, alias: str, layer: nn.Module, overwrite: bool = False
+    ) -> None:
+        if overwrite or not self.exists(alias=alias):
+            self._current_registry[alias] = layer
+        else:
+            raise AssertionError(
+                f"Alias ({alias}) is already exist in the current registry!" +
+                "Try different alias or use overwrite flag."
+            )
+
+    def __call__(self, alias: str, *args, **kwargs) -> Any:
+        assert self.exists(alias=alias), (
+            f"Alias ({alias}) does not exist in the registry!"
+        )
+        return self.get(alias=alias)(*args, **kwargs)
+
+    def get(self, alias: str) -> Any:
+        return self._current_registry.get(alias, None)
+
+    @property
+    def keys(self) -> tuple:
+        return tuple(self._current_registry.keys())
+
+    def exists(self, alias: str) -> bool:
+        return alias in self._current_registry
+
+    def __str__(self):
+        return f"Registered Aliases: {self.keys}"
 
 
-class TopFormer(nn.Module):
+class TopFormerModule(nn.Module):
+
+    __module_registry = SubmoduleRegistry()
+
     # noinspection SpellCheckingInspection
     def __init__(
             self,
@@ -869,8 +963,8 @@ class TopFormer(nn.Module):
                 OrderedDict[str, Dict[str, Any]],
                 Sequence[Dict[str, Any]]
             ],
-            out_channels: Sequence[int],
             channel_splits: Sequence[int],
+            out_channels: Sequence[int],
             token_subset: Sequence[int] = None,
             depths: int = 4,
             key_dim: int = 16,
@@ -880,10 +974,10 @@ class TopFormer(nn.Module):
             c2t_stride: int = 2,
             drop_path_rate: float = 0.0,
             norm_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'batchnorm_2d'}.items()),
             act_cfg: Union[
-                Dict[str, Any], FrozenSet[Sequence[str, Any]]
+                Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu6'}.items()),
             injection_type: str = "multi_sum",
             injection: bool = True
@@ -921,13 +1015,13 @@ class TopFormer(nn.Module):
             stage_configs=stage_configs,
             input_channels=input_channels,
             init_features=16,
-            act_cfg=frozenset({'alias': 'relu'}.items()),
+            act_cfg={'alias': 'relu'},
             norm_cfg=norm_cfg,
             width_multiplier=1.0
         )
         self.ppa = PyramidPoolAgg(stride=c2t_stride)
 
-        self.trans = BasicLayer(
+        self.trans = SemanticsExtractorModule(
             block_count=depths,
             embedding_dim=self.embed_dim,
             key_dim=key_dim,
@@ -942,30 +1036,286 @@ class TopFormer(nn.Module):
             act_cfg=act_cfg
         )
 
-        inj_module = SIM_BLOCK[injection_type]
-        self.upsampling_stages = ParallelModule()
-        for i, inc, outc in zip(token_subset, channel_splits, out_channels):
-            self.upsampling_stages.add_module(
-                name=stage_names[i],
-                module=inj_module(
-                    inc=inc,
-                    outc=outc,
-                    norm_cfg=norm_cfg,
-                    act_cfg=act_cfg
+        if self.injection:
+            assert self.__module_registry.exists(
+                alias=injection_type
+            ), f"Unknown injection_type: {injection_type}"
+            inj_module = self.__module_registry.get(alias=injection_type)
+            self.post_stages = ParallelModule()
+            for i, inc, outc in zip(
+                    token_subset,
+                    channel_splits,
+                    out_channels
+            ):
+                self.post_stages.add_module(
+                    name=stage_names[i],
+                    module=inj_module(
+                        inc=inc,
+                        outc=outc,
+                        norm_cfg=norm_cfg,
+                        act_cfg=act_cfg
+                    )
                 )
-            )
+        else:
+            self.post_stages = nn.Identity()
 
     def forward(self, x):
-        outputs = self.tpm(x)
-        out = self.ppa(outputs)
-        out = self.trans(out)
+        pyramid_stages = self.tpm(x)
+        gather = self.ppa(pyramid_stages)
+        extract = self.trans(gather)
         if self.injection:
-            out = out.split(self.channel_splits, dim=1)
-            results = OrderedDict()
-            for i, (k, t) in enumerate(outputs.items()):
+            groups = extract.split(self.channel_splits, dim=1)
+            local_tokens = OrderedDict()
+            for i, (k, t) in enumerate(pyramid_stages.items()):
                 if i in self.token_subset:
-                    results[k] = (t, out[i])
-            results = self.upsampling_stages(results)
-            return results
+                    local_tokens[k] = (t, groups[i])
+            semantics = self.post_stages(local_tokens)
+            return semantics
         else:
-            return out
+            return extract
+
+
+# noinspection SpellCheckingInspection
+class TopFormerBackBone(nn.Module):
+    __available_configs = {
+        'T': {
+            'stage_configs': {
+                'stage_1': {
+                    'kernel_size': 3,
+                    'expand_ratio': 1,
+                    'base_channels': 16,
+                    'stride': 1
+                },
+                'stage_2': {
+                    'kernel_size': 3,
+                    'expand_ratio': 4,
+                    'base_channels': 16,
+                    'stride': 2
+                },
+                'stage_3': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 16,
+                    'stride': 1
+                },
+                'stage_4': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 32,
+                    'stride': 2
+                },
+                'stage_5': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 32,
+                    'stride': 1
+                },
+                'stage_6': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 64,
+                    'stride': 2
+                },
+                'stage_7': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 64,
+                    'stride': 1
+                },
+                'stage_8': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 96,
+                    'stride': 2
+                },
+                'stage_9': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 96,
+                    'stride': 1
+                }
+            },
+            'channel_splits': (96, 64, 32),
+            'out_channels': (128, 128, 128),
+            'token_subset': (4, 6, 8),
+            'num_heads': 4,
+            'c2t_stride': 2,
+            'depths': 4,
+            'key_dim': 16,
+            'attn_ratios': 2,
+            'mlp_ratios': 2,
+            'drop_path_rate': 0.0,
+            'norm_cfg': {'alias': 'batchnorm_2d'},
+            'act_cfg': {'alias': 'relu6'},
+            'injection_type': 'dot_sum'
+        },
+        'S': {
+            'stage_configs': {
+                'stage_1': {
+                    'kernel_size': 3,
+                    'expand_ratio': 1,
+                    'base_channels': 16,
+                    'stride': 1
+                },
+                'stage_2': {
+                    'kernel_size': 3,
+                    'expand_ratio': 4,
+                    'base_channels': 24,
+                    'stride': 2
+                },
+                'stage_3': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 24,
+                    'stride': 1
+                },
+                'stage_4': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 48,
+                    'stride': 2
+                },
+                'stage_5': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 48,
+                    'stride': 1
+                },
+                'stage_6': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 96,
+                    'stride': 2
+                },
+                'stage_7': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 96,
+                    'stride': 1
+                },
+                'stage_8': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 128,
+                    'stride': 2
+                },
+                'stage_9': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 128,
+                    'stride': 1
+                },
+                'stage_10': {
+                    'kernel_size': 3,
+                    'expand_ratio': 6,
+                    'base_channels': 128,
+                    'stride': 1
+                }
+            },
+            'channel_splits': (96, 64, 32),
+            'out_channels': (128, 128, 128),
+            'token_subset': (4, 6, 8),
+            'num_heads': 4,
+            'c2t_stride': 2,
+            'depths': 4,
+            'key_dim': 16,
+            'attn_ratios': 2,
+            'mlp_ratios': 2,
+            'drop_path_rate': 0.0,
+            'norm_cfg': {'alias': 'batchnorm_2d'},
+            'act_cfg': {'alias': 'relu6'},
+            'injection_type': 'dot_sum'
+        },
+        'B': {
+            'stage_configs': {
+                'stage_1': {
+                    'kernel_size': 3,
+                    'expand_ratio': 1,
+                    'base_channels': 16,
+                    'stride': 1
+                },
+                'stage_2': {
+                    'kernel_size': 3,
+                    'expand_ratio': 4,
+                    'base_channels': 32,
+                    'stride': 2
+                },
+                'stage_3': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 32,
+                    'stride': 1
+                },
+                'stage_4': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 64,
+                    'stride': 2
+                },
+                'stage_5': {
+                    'kernel_size': 5,
+                    'expand_ratio': 3,
+                    'base_channels': 64,
+                    'stride': 1
+                },
+                'stage_6': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 128,
+                    'stride': 2
+                },
+                'stage_7': {
+                    'kernel_size': 3,
+                    'expand_ratio': 3,
+                    'base_channels': 128,
+                    'stride': 1
+                },
+                'stage_8': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 160,
+                    'stride': 2
+                },
+                'stage_9': {
+                    'kernel_size': 5,
+                    'expand_ratio': 6,
+                    'base_channels': 160,
+                    'stride': 1
+                },
+                'stage_10': {
+                    'kernel_size': 3,
+                    'expand_ratio': 6,
+                    'base_channels': 160,
+                    'stride': 1
+                }
+            },
+            'channel_splits': (96, 64, 32),
+            'out_channels': (128, 128, 128),
+            'token_subset': (4, 6, 8),
+            'num_heads': 4,
+            'c2t_stride': 2,
+            'depths': 4,
+            'key_dim': 16,
+            'attn_ratios': 2,
+            'mlp_ratios': 2,
+            'drop_path_rate': 0.0,
+            'norm_cfg': {'alias': 'batchnorm_2d'},
+            'act_cfg': {'alias': 'relu6'},
+            'injection_type': 'dot_sum'
+        }
+    }
+
+    def __init__(
+            self,
+            alias: str = 'T',
+            input_channels: int = 3,
+            injection: bool = True
+    ):
+        config = self.__available_configs[alias]
+        config['input_channels'] = input_channels
+        config['injection'] = injection
+        super(TopFormerBackBone, self).__init__()
+        self.net = TopFormerModule(**config)
+
+    def forward(self, x):
+        return self.net(x)

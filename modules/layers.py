@@ -15,6 +15,7 @@ __all__ = [
     'Padding',
     'PaddedConv2d',
     'Resize',
+    'SplitGroups',
     'BranchModule',
     'StagingModule',
     'ParallelModule'
@@ -264,6 +265,16 @@ class Resize(tnn.Module):
             **self.kwargs
         )
         return x
+
+
+class SplitGroups(tnn.Module):
+    def __init__(self, dim: int, splits: Sequence[int]):
+        super(SplitGroups, self).__init__()
+        self.dim = dim
+        self.splits = splits
+
+    def forward(self, x):
+        return x.split(self.splits, dim=self.dim)
 
 
 class BranchModule(tnn.Sequential):

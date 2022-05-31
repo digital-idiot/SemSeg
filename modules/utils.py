@@ -26,20 +26,20 @@ def get_shape(tensor: torch.Tensor):
     return shape
 
 
-def make_divisible(v, divisor: int, min_value: int = None):
+def make_divisible(value, divisor: int, min_value: int = None):
     """
     This function is taken from the original tf repo.
     It ensures that all layers have a channel number that is divisible by 8
     It can be seen here: https://kutt.it/bk7IRJ
-    :param v:
+    :param value:
     :param divisor:
     :param min_value:
     :return:
     """
     if min_value is None:
         min_value = divisor
-    new_v = max(min_value, ((int(v + divisor / 2) // divisor) * divisor))
+    new_value = max(min_value, ((int(value + divisor / 2) // divisor) * divisor))
     # Make sure that round down does not go down by more than 10%.
-    if new_v < 0.9 * v:
-        new_v += divisor
-    return new_v
+    if new_value < 0.9 * value:
+        new_value += divisor
+    return new_value
