@@ -252,25 +252,50 @@ class TokenPyramidModule(nn.Module):
                 order='CNA'
             )
         )
-
+        self.out_channels = OrderedDict()
         staging_module = StagingModule()
-        for name, params_dict in stage_configs.items():
-            layer_params = {
-                "inc": init_features,
-                "act_cfg": act_cfg,
-                "norm_cfg": norm_cfg
-            }
-            params_dict['outc'] = make_divisible(
-                value=(params_dict.pop('base_channels') * width_multiplier),
-                divisor=8,
-                min_value=8
-            )
-            layer_params.update(params_dict)
-            staging_module.add_module(
-                name=name,
-                module=InvertedResidual(**layer_params)
-            )
-            init_features = params_dict['outc']
+        for stage_name, stage_conf in stage_configs.items():
+            stage = nn.Sequential()
+            if isinstance(stage_conf, Sequence):
+                stage_conf = OrderedDict(
+                    [
+                        (f"resblock_{i+1}", conf)
+                        for i, conf in enumerate(stage_conf)
+                    ]
+                )
+            for block_name, params in stage_conf.items():
+                if isinstance(params, Sequence):
+                    assert len(params) == 4, (
+                        f"Invalid layer spec encountered: {params}\n" +
+                        f"Expected 4 parameters received {len(params)}"
+                    )
+                    params = {
+                        'kernel_size': params[0],
+                        'expand_ratio': params[1],
+                        'base_channels': params[2],
+                        'stride': params[3]
+                    }
+                layer_params = {
+                    "inc": init_features,
+                    "act_cfg": act_cfg,
+                    "norm_cfg": norm_cfg
+                }
+                params['outc'] = make_divisible(
+                    value=(
+                        params.pop('base_channels') * width_multiplier
+                    ),
+                    divisor=8,
+                    min_value=8
+                )
+                layer_params.update(params)
+                stage.add_module(
+                    name=block_name,
+                    module=InvertedResidual(**layer_params)
+                )
+                init_features = params['outc']
+            self.out_channels[stage_name] = init_features
+            staging_module.add_module(name=stage_name, module=stage)
+
         self.net.add_module(
             name='staging_module',
             module=staging_module
@@ -381,6 +406,7 @@ class AttentionBlock(torch.nn.Module):
 
     def forward(self, x):
         b, c, h, w = get_shape(x)
+        # print(b, c, h, w)
         branch_outputs = self.multi_branch(x)
         x = torch.matmul(
             input=torch.matmul(
@@ -395,6 +421,7 @@ class AttentionBlock(torch.nn.Module):
                 b, self.num_heads, self.d, (h * w)
             ).permute(0, 1, 3, 2)
         ).permute(0, 1, 3, 2).reshape(b, self.dh, h, w)
+        print('Exit')
         return self.projection(x)
 
 
@@ -473,7 +500,7 @@ class SemanticsExtractorModule(nn.Module):
         self.block_count = block_count
         self.transformer_sequence = nn.Sequential()
 
-        # self.transformer_blocks = nn.ModuleList()
+        # TODO: Fix potential bug
         for i in range(self.block_count):
             self.transformer_sequence.add_module(
                 name=f'extractor_{i+1}',
@@ -963,9 +990,7 @@ class TopFormerModule(nn.Module):
                 OrderedDict[str, Dict[str, Any]],
                 Sequence[Dict[str, Any]]
             ],
-            channel_splits: Sequence[int],
-            out_channels: Sequence[int],
-            token_subset: Sequence[int] = None,
+            out_channels: Union[Sequence[int], Dict[str, int]],
             depths: int = 4,
             key_dim: int = 16,
             num_heads: int = 8,
@@ -980,21 +1005,8 @@ class TopFormerModule(nn.Module):
                 Dict[str, Any], FrozenSet[Sequence[Any]]
             ] = frozenset({'alias': 'relu6'}.items()),
             injection_type: str = "multi_sum",
-            injection: bool = True
     ):
         super().__init__()
-        if token_subset is None:
-            token_subset = tuple(range(len(stage_configs)))
-
-        assert len(channel_splits) == len(token_subset) == len(
-            out_channels
-        ) <= len(stage_configs), (
-            "Invalid config encountered!\n" +
-            f"\ttoken_count: {len(token_subset)}\n" +
-            f"\tupsamplig_stages: {len(channel_splits)}\n" +
-            f"\tupsampling_channels: {len(out_channels)}" +
-            f"\tpyramid_stages: {len(stage_configs)}"
-        )
 
         if isinstance(stage_configs, Sequence):
             stage_configs = OrderedDict(
@@ -1003,13 +1015,9 @@ class TopFormerModule(nn.Module):
                     for i, conf in enumerate(stage_configs)
                 ]
             )
-        stage_names = tuple(stage_configs.keys())
         self.stage_configs = stage_configs
-        self.token_subset = token_subset
-        self.channel_splits = channel_splits
         self.norm_cfg = norm_cfg
-        self.injection = injection
-        self.embed_dim = sum(channel_splits)
+        self.injection_type = injection_type
 
         self.tpm = TokenPyramidModule(
             stage_configs=stage_configs,
@@ -1019,6 +1027,30 @@ class TopFormerModule(nn.Module):
             norm_cfg=norm_cfg,
             width_multiplier=1.0
         )
+
+        self.stage_names = tuple(self.tpm.out_channels.keys())
+        self.channel_splits = self.tpm.out_channels.values()
+        self.embed_dim = sum(self.channel_splits)
+        if isinstance(out_channels, Sequence):
+            injection_configs = {
+                self.stage_names[i]: {
+                    'inc': self.tpm.out_channels[self.stage_names[i]], 'outc': n
+                }
+                for i, n in enumerate(out_channels)
+            }
+        elif isinstance(out_channels, Dict):
+            injection_configs = {
+                k: {
+                    'inc': self.tpm.out_channels[k], 'outc': n
+                }
+                for k, n in out_channels.items()
+            }
+        else:
+            raise TypeError(
+                f"Invalid out_channels: {type(out_channels)}" +
+                f"({out_channels})\nExpected an instance of Sequnce or Dict."
+            )
+
         self.ppa = PyramidPoolAgg(stride=c2t_stride)
 
         self.trans = SemanticsExtractorModule(
@@ -1036,22 +1068,18 @@ class TopFormerModule(nn.Module):
             act_cfg=act_cfg
         )
 
-        if self.injection:
+        if self.injection_type:
             assert self.__module_registry.exists(
-                alias=injection_type
-            ), f"Unknown injection_type: {injection_type}"
-            inj_module = self.__module_registry.get(alias=injection_type)
+                alias=self.injection_type
+            ), f"Unknown injection_type: {self.injection_type}"
+            inj_module = self.__module_registry.get(alias=self.injection_type)
             self.post_stages = ParallelModule()
-            for i, inc, outc in zip(
-                    token_subset,
-                    channel_splits,
-                    out_channels
-            ):
+            for name, arg_dict in injection_configs.items():
                 self.post_stages.add_module(
-                    name=stage_names[i],
+                    name=name,
                     module=inj_module(
-                        inc=inc,
-                        outc=outc,
+                        inc=arg_dict['inc'],
+                        outc=arg_dict['outc'],
                         norm_cfg=norm_cfg,
                         act_cfg=act_cfg
                     )
@@ -1063,7 +1091,8 @@ class TopFormerModule(nn.Module):
         pyramid_stages = self.tpm(x)
         gather = self.ppa(pyramid_stages)
         extract = self.trans(gather)
-        if self.injection:
+        print(gather.shape)
+        if self.injection_type:
             groups = extract.split(self.channel_splits, dim=1)
             local_tokens = OrderedDict()
             for i, (k, t) in enumerate(pyramid_stages.items()):
@@ -1081,63 +1110,69 @@ class TopFormerBackBone(nn.Module):
         'T': {
             'stage_configs': {
                 'stage_1': {
-                    'kernel_size': 3,
-                    'expand_ratio': 1,
-                    'base_channels': 16,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 1,
+                        'base_channels': 16,
+                        'stride': 1
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 4,
+                        'base_channels': 16,
+                        'stride': 2
+                    },
+                    'resblock_3': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 16,
+                        'stride': 1
+                    }
                 },
                 'stage_2': {
-                    'kernel_size': 3,
-                    'expand_ratio': 4,
-                    'base_channels': 16,
-                    'stride': 2
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 32,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 32,
+                        'stride': 1
+                    }
                 },
                 'stage_3': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 16,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 64,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 64,
+                        'stride': 1
+                    }
                 },
                 'stage_4': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 32,
-                    'stride': 2
-                },
-                'stage_5': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 32,
-                    'stride': 1
-                },
-                'stage_6': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 64,
-                    'stride': 2
-                },
-                'stage_7': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 64,
-                    'stride': 1
-                },
-                'stage_8': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 96,
-                    'stride': 2
-                },
-                'stage_9': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 96,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 96,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 96,
+                        'stride': 1
+                    }
                 }
             },
-            'channel_splits': (96, 64, 32),
-            'out_channels': (128, 128, 128),
-            'token_subset': (4, 6, 8),
+            'out_channels': {'stage_2': 128, 'stage_3': 128, 'stage_4': 128},
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
@@ -1152,69 +1187,75 @@ class TopFormerBackBone(nn.Module):
         'S': {
             'stage_configs': {
                 'stage_1': {
-                    'kernel_size': 3,
-                    'expand_ratio': 1,
-                    'base_channels': 16,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 1,
+                        'base_channels': 16,
+                        'stride': 1
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 4,
+                        'base_channels': 24,
+                        'stride': 2
+                    },
+                    'resblock_3': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 24,
+                        'stride': 1
+                    }
                 },
                 'stage_2': {
-                    'kernel_size': 3,
-                    'expand_ratio': 4,
-                    'base_channels': 24,
-                    'stride': 2
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 48,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 48,
+                        'stride': 1
+                    }
                 },
                 'stage_3': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 24,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 96,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 96,
+                        'stride': 1
+                    }
                 },
                 'stage_4': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 48,
-                    'stride': 2
-                },
-                'stage_5': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 48,
-                    'stride': 1
-                },
-                'stage_6': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 96,
-                    'stride': 2
-                },
-                'stage_7': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 96,
-                    'stride': 1
-                },
-                'stage_8': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 128,
-                    'stride': 2
-                },
-                'stage_9': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 128,
-                    'stride': 1
-                },
-                'stage_10': {
-                    'kernel_size': 3,
-                    'expand_ratio': 6,
-                    'base_channels': 128,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 128,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 128,
+                        'stride': 1
+                    },
+                    'resblock_3': {
+                        'kernel_size': 3,
+                        'expand_ratio': 6,
+                        'base_channels': 128,
+                        'stride': 1
+                    }
                 }
             },
-            'channel_splits': (96, 64, 32),
-            'out_channels': (128, 128, 128),
-            'token_subset': (4, 6, 8),
+            'out_channels': {'stage_2': 192, 'stage_3': 192, 'stage_4': 192},
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
@@ -1229,69 +1270,75 @@ class TopFormerBackBone(nn.Module):
         'B': {
             'stage_configs': {
                 'stage_1': {
-                    'kernel_size': 3,
-                    'expand_ratio': 1,
-                    'base_channels': 16,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 1,
+                        'base_channels': 16,
+                        'stride': 1
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 4,
+                        'base_channels': 32,
+                        'stride': 2
+                    },
+                    'resblock_3': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 32,
+                        'stride': 1
+                    }
                 },
                 'stage_2': {
-                    'kernel_size': 3,
-                    'expand_ratio': 4,
-                    'base_channels': 32,
-                    'stride': 2
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 64,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 3,
+                        'base_channels': 64,
+                        'stride': 1
+                    }
                 },
                 'stage_3': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 32,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 128,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 3,
+                        'expand_ratio': 3,
+                        'base_channels': 128,
+                        'stride': 1
+                    }
                 },
                 'stage_4': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 64,
-                    'stride': 2
-                },
-                'stage_5': {
-                    'kernel_size': 5,
-                    'expand_ratio': 3,
-                    'base_channels': 64,
-                    'stride': 1
-                },
-                'stage_6': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 128,
-                    'stride': 2
-                },
-                'stage_7': {
-                    'kernel_size': 3,
-                    'expand_ratio': 3,
-                    'base_channels': 128,
-                    'stride': 1
-                },
-                'stage_8': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 160,
-                    'stride': 2
-                },
-                'stage_9': {
-                    'kernel_size': 5,
-                    'expand_ratio': 6,
-                    'base_channels': 160,
-                    'stride': 1
-                },
-                'stage_10': {
-                    'kernel_size': 3,
-                    'expand_ratio': 6,
-                    'base_channels': 160,
-                    'stride': 1
+                    'resblock_1': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 160,
+                        'stride': 2
+                    },
+                    'resblock_2': {
+                        'kernel_size': 5,
+                        'expand_ratio': 6,
+                        'base_channels': 160,
+                        'stride': 1
+                    },
+                    'resblock_3': {
+                        'kernel_size': 3,
+                        'expand_ratio': 6,
+                        'base_channels': 160,
+                        'stride': 1
+                    }
                 }
             },
-            'channel_splits': (96, 64, 32),
-            'out_channels': (128, 128, 128),
-            'token_subset': (4, 6, 8),
+            'out_channels': {'stage_2': 256, 'stage_3': 256, 'stage_4': 256},
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
@@ -1307,13 +1354,13 @@ class TopFormerBackBone(nn.Module):
 
     def __init__(
             self,
-            alias: str = 'T',
+            config_alias: str = 'S',
             input_channels: int = 3,
-            injection: bool = True
+            injection_type: str = 'dot_sum'
     ):
-        config = self.__available_configs[alias]
+        config = self.__available_configs[config_alias]
         config['input_channels'] = input_channels
-        config['injection'] = injection
+        config['injection_type'] = injection_type
         super(TopFormerBackBone, self).__init__()
         self.net = TopFormerModule(**config)
 

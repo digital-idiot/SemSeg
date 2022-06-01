@@ -164,7 +164,7 @@ class AutoPadding(tnn.Module):
         ).ravel(order='C').tolist()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.ndim != self.ndim:
+        if x.ndim != (2 + self.ndim):
             raise AssertionError(
                 'Dimension mismatch!\n' +
                 f'Expected {self.ndim}D tensor got {x.ndim} tensor.'
