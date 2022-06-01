@@ -315,7 +315,7 @@ class ParallelModule(tnn.Sequential):
                 out.append(self[i](x[i]))
         elif isinstance(x, Dict):
             out = OrderedDict()
-            for name, data in self.x.items():
+            for name, data in x.items():
                 out[name] = self.get_submodule(target=name)(data)
         else:
             raise AssertionError(

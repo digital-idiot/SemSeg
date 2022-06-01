@@ -37,6 +37,7 @@ class FeedForwardNetwork(nn.Module):
             ] = frozenset({'alias': 'batchnorm_2d'}.items())
     ):
         super().__init__()
+        self.in_features = in_features
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
 
@@ -47,7 +48,7 @@ class FeedForwardNetwork(nn.Module):
             module=ConvolutionBlock(
                 ndim=2,
                 inc=in_features,
-                outc=out_features,
+                outc=hidden_features,
                 kernel_size=(1, 1),
                 stride=(1, 1),
                 dilation=(1, 1),
@@ -213,7 +214,6 @@ class TokenPyramidModule(nn.Module):
                 OrderedDict[str, Dict[str, Any]],
                 Sequence[Dict[str, Any]]
             ],
-            # token_subset: Union[Set[str], Set[int]] = None,
             input_channels: int = 3,
             init_features: int = 16,
             act_cfg: Union[
@@ -406,7 +406,6 @@ class AttentionBlock(torch.nn.Module):
 
     def forward(self, x):
         b, c, h, w = get_shape(x)
-        # print(b, c, h, w)
         branch_outputs = self.multi_branch(x)
         x = torch.matmul(
             input=torch.matmul(
@@ -421,7 +420,6 @@ class AttentionBlock(torch.nn.Module):
                 b, self.num_heads, self.d, (h * w)
             ).permute(0, 1, 3, 2)
         ).permute(0, 1, 3, 2).reshape(b, self.dh, h, w)
-        print('Exit')
         return self.projection(x)
 
 
@@ -636,11 +634,12 @@ class InjectionDotSum(nn.Module):
         )
 
     # noinspection SpellCheckingInspection
-    def forward(self, x_l, x_g):
+    def forward(self, x):
         """
         x_g: global features
         x_l: local features
         """
+        x_l, x_g = x
         b, c, h, w = get_shape(x_l)
         local_feat = self.local_embedding(x_l)
         global_act = self.global_act(x_g)
@@ -761,7 +760,8 @@ class InjectionDotSumCBR(nn.Module):
         )
 
     # noinspection SpellCheckingInspection
-    def forward(self, x_l, x_g):
+    def forward(self, x):
+        x_l, x_g = x
         b, c, h, w = get_shape(x_l)
         local_feat = self.local_embedding(x_l)
         global_act = self.global_act(x_g)
@@ -839,7 +839,8 @@ class FuseBlockSum(nn.Module):
         )
 
     # noinspection SpellCheckingInspection
-    def forward(self, x_l, x_h):
+    def forward(self, x):
+        x_l, x_h = x
         b, c, h, w = get_shape(x_l)
         feat_l = self.fuse_l(x_l)
         # noinspection PyArgumentList
@@ -906,7 +907,8 @@ class FuseBlockDot(nn.Module):
         )
 
     # noinspection SpellCheckingInspection
-    def forward(self, x_l, x_h):
+    def forward(self, x):
+        x_l, x_h = x
         b, c, h, w = get_shape(x_l)
         feat_l = self.fuse_l(x_l)
         # noinspection PyArgumentList
@@ -1029,27 +1031,26 @@ class TopFormerModule(nn.Module):
         )
 
         self.stage_names = tuple(self.tpm.out_channels.keys())
-        self.channel_splits = self.tpm.out_channels.values()
-        self.embed_dim = sum(self.channel_splits)
         if isinstance(out_channels, Sequence):
-            injection_configs = {
-                self.stage_names[i]: {
-                    'inc': self.tpm.out_channels[self.stage_names[i]], 'outc': n
-                }
-                for i, n in enumerate(out_channels)
-            }
-        elif isinstance(out_channels, Dict):
-            injection_configs = {
-                k: {
-                    'inc': self.tpm.out_channels[k], 'outc': n
-                }
-                for k, n in out_channels.items()
-            }
-        else:
-            raise TypeError(
-                f"Invalid out_channels: {type(out_channels)}" +
-                f"({out_channels})\nExpected an instance of Sequnce or Dict."
+            out_channels = OrderedDict(
+                [
+                    (self.stage_names[i], n)
+                    for i, n in enumerate(out_channels)
+                ]
             )
+        self.channel_splits = tuple(self.tpm.out_channels.values())
+        self.embed_dim = sum(self.channel_splits)
+        assert isinstance(out_channels, Dict), (
+            f"Invalid out_channels: {type(out_channels)}" +
+            f"({out_channels})\nExpected an instance of Sequnce or Dict."
+        )
+        injection_configs = {
+            k: {
+                'inc': self.tpm.out_channels[k], 'outc': n
+            }
+            for k, n in out_channels.items()
+        }
+        self.injection_keys = tuple(injection_configs.keys())
 
         self.ppa = PyramidPoolAgg(stride=c2t_stride)
 
@@ -1091,14 +1092,24 @@ class TopFormerModule(nn.Module):
         pyramid_stages = self.tpm(x)
         gather = self.ppa(pyramid_stages)
         extract = self.trans(gather)
-        print(gather.shape)
         if self.injection_type:
-            groups = extract.split(self.channel_splits, dim=1)
-            local_tokens = OrderedDict()
-            for i, (k, t) in enumerate(pyramid_stages.items()):
-                if i in self.token_subset:
-                    local_tokens[k] = (t, groups[i])
-            semantics = self.post_stages(local_tokens)
+            print(extract.size(1), sum(self.channel_splits))
+            groups = OrderedDict(
+                [
+                    (k, g)
+                    for k, g in zip(
+                        self.stage_names,
+                        extract.split(self.channel_splits, dim=1)
+                    )
+                ]
+            )
+            pyramid_stages = OrderedDict(
+                [
+                    (k, (pyramid_stages[k], groups[k]))
+                    for k in self.injection_keys
+                ]
+            )
+            semantics = self.post_stages(pyramid_stages)
             return semantics
         else:
             return extract
