@@ -41,6 +41,8 @@ class FeedForwardNetwork(nn.Module):
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
 
+        dropout_layer = nn.Dropout(drop_rate)
+
         self.net = nn.Sequential()
 
         self.net.add_module(
@@ -83,7 +85,7 @@ class FeedForwardNetwork(nn.Module):
             )
         )
 
-        self.net.add_module(name='dwdropout', module=nn.Dropout(drop_rate))
+        self.net.add_module(name='dwdropout', module=dropout_layer)
 
         self.net.add_module(
             name='postconv',
@@ -105,7 +107,7 @@ class FeedForwardNetwork(nn.Module):
             )
         )
 
-        self.net.add_module(name='postdropout', module=nn.Dropout(drop_rate))
+        self.net.add_module(name='postdropout', module=dropout_layer)
 
     def forward(self, x):
         return self.net(x)
@@ -498,7 +500,6 @@ class SemanticsExtractorModule(nn.Module):
         self.block_count = block_count
         self.transformer_sequence = nn.Sequential()
 
-        # TODO: Fix potential bug
         for i in range(self.block_count):
             self.transformer_sequence.add_module(
                 name=f'extractor_{i+1}',
@@ -1093,7 +1094,6 @@ class TopFormerModule(nn.Module):
         gather = self.ppa(pyramid_stages)
         extract = self.trans(gather)
         if self.injection_type:
-            print(extract.size(1), sum(self.channel_splits))
             groups = OrderedDict(
                 [
                     (k, g)
@@ -1103,16 +1103,14 @@ class TopFormerModule(nn.Module):
                     )
                 ]
             )
-            pyramid_stages = OrderedDict(
+            extract = OrderedDict(
                 [
                     (k, (pyramid_stages[k], groups[k]))
                     for k in self.injection_keys
                 ]
             )
-            semantics = self.post_stages(pyramid_stages)
-            return semantics
-        else:
-            return extract
+        semantics = self.post_stages(extract)
+        return semantics
 
 
 # noinspection SpellCheckingInspection
@@ -1183,7 +1181,12 @@ class TopFormerBackBone(nn.Module):
                     }
                 }
             },
-            'out_channels': {'stage_2': 128, 'stage_3': 128, 'stage_4': 128},
+            'out_channels': {
+                'stage_1': 128,
+                'stage_2': 128,
+                'stage_3': 128,
+                'stage_4': 128
+            },
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
@@ -1266,7 +1269,12 @@ class TopFormerBackBone(nn.Module):
                     }
                 }
             },
-            'out_channels': {'stage_2': 192, 'stage_3': 192, 'stage_4': 192},
+            'out_channels': {
+                'stage_1': 192,
+                'stage_2': 192,
+                'stage_3': 192,
+                'stage_4': 192
+            },
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
@@ -1349,7 +1357,12 @@ class TopFormerBackBone(nn.Module):
                     }
                 }
             },
-            'out_channels': {'stage_2': 256, 'stage_3': 256, 'stage_4': 256},
+            'out_channels': {
+                'stage_1': 256,
+                'stage_2': 256,
+                'stage_3': 256,
+                'stage_4': 256
+            },
             'num_heads': 4,
             'c2t_stride': 2,
             'depths': 4,
