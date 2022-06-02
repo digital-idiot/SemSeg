@@ -42,16 +42,30 @@ class ConvolutionBlock(tnn.Module):
         ), f"Invalid order: {order}"
         self.order = order.upper()
 
-        if ndim == 1:
-            conv_module = tnn.Conv1d
-        elif ndim == 2:
-            conv_module = tnn.Conv2d
-        elif ndim == 3:
-            conv_module = tnn.Conv3d
+        if inc is not None:
+            if ndim == 1:
+                conv_module = tnn.Conv1d
+            elif ndim == 2:
+                conv_module = tnn.Conv2d
+            elif ndim == 3:
+                conv_module = tnn.Conv3d
+            else:
+                raise NotImplementedError(
+                    f"{ndim}D convolution not supported!"
+                )
+            conv_params = {'in_channels': inc}
         else:
-            raise NotImplementedError(
-                f"{ndim}D padding not supported"
-            )
+            if ndim == 1:
+                conv_module = tnn.LazyConv1d
+            elif ndim == 2:
+                conv_module = tnn.LazyConv2d
+            elif ndim == 3:
+                conv_module = tnn.LazyConv3d
+            else:
+                raise NotImplementedError(
+                    f"{ndim}D convolution not supported!"
+                )
+            conv_params = dict()
         self.ndim = ndim
 
         if isinstance(kernel_size, int):
@@ -113,19 +127,23 @@ class ConvolutionBlock(tnn.Module):
             bias = True if (norm_cfg is None) else False
 
         # noinspection SpellCheckingInspection
-        pconv = conv_module(
-            in_channels=inc,
-            out_channels=outc,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=0,
-            dilation=dilation,
-            groups=groups,
-            bias=bias,
-            padding_mode='zeros',
-            device=None,
-            dtype=None
+        conv_params.update(
+            {
+                "out_channels": outc,
+                "kernel_size": kernel_size,
+                "stride": stride,
+                "padding": 0,
+                "dilation": dilation,
+                "groups": groups,
+                "bias": bias,
+                "padding_mode": 'zeros',
+                "device": None,
+                "dtype": None
+            }
         )
+
+        # noinspection SpellCheckingInspection
+        pconv = conv_module(**conv_params)
         if bool(spectral_norm):
             # noinspection SpellCheckingInspection
             pconv = tnn.utils.spectral_norm(pconv)

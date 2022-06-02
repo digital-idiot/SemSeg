@@ -1,1 +1,1 @@
-from .activations import HSigmoid
+from activation.activations import HSigmoid

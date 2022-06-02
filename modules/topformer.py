@@ -6,6 +6,7 @@ from typing import Union
 from copy import deepcopy
 from typing import Sequence
 from typing import FrozenSet
+from activation import HSigmoid
 import torch.nn.functional as tnf
 from collections import OrderedDict
 from modules.utils import get_shape
@@ -16,6 +17,7 @@ from modules.utils import make_divisible
 from modules.layers import StagingModule
 from modules.layers import ParallelModule
 from modules.blocks import ConvolutionBlock
+from modules.helpers import ActivationRegistry
 
 
 __all__ = ['TopFormerBackBone', 'TopFormerModule']
@@ -1010,7 +1012,7 @@ class TopFormerModule(nn.Module):
             injection_type: str = "multi_sum",
     ):
         super().__init__()
-
+        ActivationRegistry.register(alias='hsigmoid', layer=HSigmoid)
         if isinstance(stage_configs, Sequence):
             stage_configs = OrderedDict(
                 [
@@ -1045,13 +1047,13 @@ class TopFormerModule(nn.Module):
             f"Invalid out_channels: {type(out_channels)}" +
             f"({out_channels})\nExpected an instance of Sequnce or Dict."
         )
-        injection_configs = {
+        self.injection_configs = {
             k: {
                 'inc': self.tpm.out_channels[k], 'outc': n
             }
             for k, n in out_channels.items()
         }
-        self.injection_keys = tuple(injection_configs.keys())
+        self.injection_keys = tuple(self.injection_configs.keys())
 
         self.ppa = PyramidPoolAgg(stride=c2t_stride)
 
@@ -1076,7 +1078,7 @@ class TopFormerModule(nn.Module):
             ), f"Unknown injection_type: {self.injection_type}"
             inj_module = self.__module_registry.get(alias=self.injection_type)
             self.post_stages = ParallelModule()
-            for name, arg_dict in injection_configs.items():
+            for name, arg_dict in self.injection_configs.items():
                 self.post_stages.add_module(
                     name=name,
                     module=inj_module(
@@ -1387,6 +1389,7 @@ class TopFormerBackBone(nn.Module):
         config['injection_type'] = injection_type
         super(TopFormerBackBone, self).__init__()
         self.net = TopFormerModule(**config)
+        self.injection_configs = self.net.injection_configs
 
     def forward(self, x):
         return self.net(x)
