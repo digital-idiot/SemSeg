@@ -1,14 +1,15 @@
 import warnings
-from core.dnet import DNet
-from loss.seg_loss import dice_loss
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
-from helper.assist import WrappedLoss
+from core.models import TopFormerModel
 from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedOptimizer
+from helper.assist import WrappedScheduler
 from helper.callbacks import PredictionWriter
+from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
+from torch.optim.lr_scheduler import OneCycleLR
 from data_factory.dataset import DatasetConfigurator
 from data_factory.data_module import IgniteDataModule
 from pytorch_lightning.callbacks import RichProgressBar
@@ -19,28 +20,28 @@ from data_factory.dataset import ReadableImagePairDataset
 from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
+
 warnings.filterwarnings('error', category=UserWarning)
 
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
-    model = DNet(
-        image_channels=3,
+    max_epochs = 500
+    model = TopFormerModel(
         num_classes=8,
-        embed_dim=256
+        config_alias='B',
+        input_channels=3,
+        injection_type='dot_sum',
+        fusion='sum'
     )
     optimizer = WrappedOptimizer(
         optimizer=AdaBound,
         lr=1e-3,
         final_lr=0.1,
-        amsbound=True
+        amsbound=False
     )
-    loss_function = WrappedLoss(loss_fn=dice_loss, smooth=1.0)
-    net = LightningSemSeg(
-        model=model,
-        optimizer=optimizer,
-        criterion=loss_function
-    )
+    loss_function = OhemCrossEntropyLoss
+
     train_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Urban/Train/Train_DataConf.json"
     ).generate_paired_dataset(
@@ -54,6 +55,20 @@ if __name__ == '__main__':
     train_dataset, val_dataset = train_dataset.split(
         ratios=(8, 2),
         random=True
+    )
+
+    scheduler = WrappedScheduler(
+        scheduler=OneCycleLR,
+        max_lr=0.01,
+        steps_per_epoch=len(train_dataset),
+        epochs=max_epochs
+    )
+
+    net = LightningSemSeg(
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        criterion=loss_function
     )
 
     test_dataset = DatasetConfigurator(
@@ -111,16 +126,16 @@ if __name__ == '__main__':
                 check_on_train_epoch_end=False,
             )
         ],
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=10,
         num_sanity_val_steps=0,
         detect_anomaly=False,
-        log_every_n_steps=10,
+        log_every_n_steps=50,
         enable_progress_bar=True,
         precision=16,
         strategy=DDPStrategy(find_unused_parameters=False),
         sync_batchnorm=False,
         enable_model_summary=False,
-        max_epochs=100,
+        max_epochs=max_epochs,
         accelerator="gpu",
         devices=-1
     )

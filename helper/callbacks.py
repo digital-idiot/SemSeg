@@ -122,16 +122,16 @@ class ShowMetric(Callback):
         tabular_dict['quality_report'].index.name = r"Metric"
         self.reports[key] = format_report(tabular_dict)
 
-    def on_train_epoch_end(
-            self, trainer: Trainer, pl_module: LightningModule
-    ) -> None:
-        key = 'Training'
-        self.prepare_report(
-            tabular_dict=pl_module.training_metrics.tabular_report(),
-            loss=pl_module.training_loss.compute(),
-            key=key
-        )
-        rank_zero_info(self.reports[key])
+    # def on_train_epoch_end(
+    #         self, trainer: Trainer, pl_module: LightningModule
+    # ) -> None:
+    #     key = 'Training'
+    #     self.prepare_report(
+    #         tabular_dict=pl_module.training_metrics.tabular_report(),
+    #         loss=pl_module.training_loss.compute(),
+    #         key=key
+    #     )
+    #     rank_zero_info(self.reports[key])
 
     def on_validation_epoch_end(
             self, trainer: Trainer, pl_module: LightningModule

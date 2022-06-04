@@ -5,6 +5,10 @@ from typing import Sequence
 from torch.nn import Module
 from torch.nn.functional import one_hot
 from helper.weights import class_weights
+from torch.nn.functional import cross_entropy
+
+# noinspection SpellCheckingInspection
+__all__ = ['DiceLoss', 'OhemCrossEntropyLoss']
 
 
 # noinspection SpellCheckingInspection
@@ -52,7 +56,7 @@ def dice_loss(
 
 
 # noinspection SpellCheckingInspection
-class Dice(Module):
+class DiceLoss(Module):
     def __init__(
             self,
             delta: float = 0.5,
@@ -94,7 +98,56 @@ class Dice(Module):
         )
         return (weights * (1 - torch.mean(dice_score, dim=0))).mean()
 
-    # def forward(self, preds, targets: Tensor) -> Tensor:
-    #     if isinstance(preds, tuple):
-    #         return sum([w * self._forward(pred, targets) for (pred, w) in zip(preds, self.aux_weights)])
-    #     return self._forward(preds, targets)
+
+# noinspection SpellCheckingInspection
+class OhemCrossEntropyLoss(Module):
+    def __init__(
+            self,
+            ignore_label: int = 0,
+            class_ids=Union[int, Sequence[int]],
+            channel_weights: Union[str, Tensor] = None,
+            thresh: float = 0.7
+    ) -> None:
+        super().__init__()
+        self.ignore_label = ignore_label
+        self.thresh = -torch.log(torch.tensor(thresh, dtype=torch.float))
+        if class_ids is not None:
+            if isinstance(class_ids, int):
+                class_ids = tuple(range(class_ids))
+            else:
+                assert isinstance(class_ids, Sequence) and all(
+                    [isinstance(i, int) for i in class_ids]
+                ), "'class_ids' are not a integer or a sequence of integer!"
+        self.class_ids = class_ids
+        self.weights = channel_weights
+        self.ignore_index = ignore_label
+
+    # noinspection SpellCheckingInspection
+    def forward(self, preds: Tensor, labels: Tensor) -> Tensor:
+        n_min = labels[labels != self.ignore_label].numel() // 16
+        if self.class_ids:
+            weights = class_weights(
+                x=labels,
+                class_ids=torch.tensor(
+                    data=self.class_ids,
+                    dtype=torch.long,
+                    device=labels.device
+                )
+            )
+        else:
+            weights = None
+
+        loss = cross_entropy(
+            input=preds,
+            target=labels,
+            weight=weights,
+            ignore_index=self.ignore_index,
+            reduction='none',
+            label_smoothing=0.0
+        ).view(-1)
+
+        loss_hard = loss[loss > self.thresh]
+        if loss_hard.numel() < n_min:
+            loss_hard, _ = loss.topk(n_min)
+
+        return torch.mean(loss_hard)

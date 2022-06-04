@@ -1,5 +1,6 @@
 import torch
 from typing import Any
+from typing import Union
 from typing import Tuple
 from typing import Optional
 from torch import nn as tnn
@@ -17,7 +18,7 @@ class LightningSemSeg(LightningModule):
             self,
             model: tnn.Module,
             optimizer: WrappedOptimizer,
-            criterion: WrappedLoss,
+            criterion: Union[WrappedLoss, tnn.Module],
             scheduler: WrappedScheduler = None,
             ignore_index: int = None,
             normalize_cm: str = 'true'

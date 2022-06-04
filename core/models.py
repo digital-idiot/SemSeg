@@ -24,6 +24,7 @@ class TopFormerModel(tnn.Module):
                 f"Unknown fusion: {fusion}\n" +
                 "Supported fusion modes are: {'concat', 'sum'}"
         )
+        self.out_channels = num_classes
         self.backbone = TopFormerBackBone(
             config_alias=config_alias,
             input_channels=input_channels,
