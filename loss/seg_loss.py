@@ -105,7 +105,6 @@ class OhemCrossEntropyLoss(Module):
             self,
             ignore_label: int = 0,
             class_ids=Union[int, Sequence[int]],
-            channel_weights: Union[str, Tensor] = None,
             thresh: float = 0.7
     ) -> None:
         super().__init__()
@@ -119,7 +118,6 @@ class OhemCrossEntropyLoss(Module):
                     [isinstance(i, int) for i in class_ids]
                 ), "'class_ids' are not a integer or a sequence of integer!"
         self.class_ids = class_ids
-        self.weights = channel_weights
         self.ignore_index = ignore_label
 
     # noinspection SpellCheckingInspection

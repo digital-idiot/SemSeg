@@ -4,25 +4,36 @@ import logging
 import warnings
 import numpy as np
 import rasterio as rio
+from abc import ABCMeta
 from pathlib import Path
 from affine import Affine
 from click import FileError
+from abc import abstractmethod
 from operator import itemgetter
 from torch.utils.data import Dataset
-from abc import ABCMeta, abstractmethod
+from data_factory.utils import image_to_tensor
+from data_factory.utils import label_to_tensor
 from data_factory.transforms import TransformPair
 from rasterio.errors import NotGeoreferencedWarning
-from typing import Union, Callable, Dict, Sequence, Any
-from data_factory.utils import image_to_tensor, label_to_tensor
+from typing import (
+    Union,
+    Callable,
+    Dict,
+    Sequence,
+    Any
+)
 
 
 class ReadableImageDataset(Dataset):
     def __init__(
             self,
             path_list: Sequence[Union[str, Path]],
+            target_shape: Sequence[int, int] = None,
+            pad_aspect: str = None,
+            resampling: int = 1,
             transform: Callable = None,
             channels: Union[int, Sequence[int]] = None,
-            tensor_maker: Callable = label_to_tensor
+            converter: Callable = label_to_tensor
     ):
         super(ReadableImageDataset, self).__init__()
         self.path_list = [
@@ -31,11 +42,35 @@ class ReadableImageDataset(Dataset):
         self.transform = transform
         self.existence_list = [path.is_file() for path in path_list]
         self.channels = channels
-        if tensor_maker:
-            assert isinstance(tensor_maker, Callable), (
+        if converter:
+            assert isinstance(converter, Callable), (
                 "'tensor_maker' is not Callable"
             )
-        self.tensor_maker = tensor_maker
+        assert isinstance(
+            converter, Callable
+        ), "Specified 'converter' isn't callable!"
+        self.tensor_maker = converter
+        if isinstance(target_shape, int):
+            target_shape = (target_shape, target_shape)
+        assert isinstance(
+            target_shape, Sequence
+        ) and (len(target_shape) == 2) and all(
+            [isinstance(x, int) and x > 0 for x in target_shape]
+        ), f"Invalid 'target_shape': {target_shape}"
+        self.target_shape = tuple(target_shape)
+
+        if pad_aspect:
+            assert isinstance(pad_aspect, str) and pad_aspect in {
+                'symmetric', 'reflect', 'edge', 'nodata'
+
+            }, (
+                f"Invalid padding: {pad_aspect}"
+            )
+        self.pad_aspect = pad_aspect
+        assert isinstance(resampling, int) and (
+                resampling in set(range(15))
+        ), f"Unknown resampling: {resampling}"
+        self.resampling = resampling
 
     def readable(self, idx):
         assert 0 <= idx < len(self), f'Index ({idx}) is out of bound!'
@@ -63,7 +98,50 @@ class ReadableImageDataset(Dataset):
                     "ignore", category=NotGeoreferencedWarning
                 )
                 with rio.open(self.path_list[index], 'r') as src:
-                    arr = src.read(indexes=self.channels)
+                    if self.target_shape:
+                        if self.pad_aspect:
+                            img_shape = [src.height, src.width]
+                            min_idx = np.argmin(img_shape)
+                            max_idx = np.argmax(img_shape)
+                            img_shape[min_idx] = round(
+                                (
+                                    (
+                                        img_shape[min_idx] *
+                                        self.target_shape[max_idx]
+                                    ) / img_shape[max_idx]
+                                )
+                            )
+                            img_shape[max_idx] = self.target_shape[max_idx]
+                            out_shape = tuple(img_shape)
+                        else:
+                            out_shape = self.target_shape
+                    diff = np.array(self.target_shape) - np.array(out_shape)
+                    pad_a = diff // 2
+                    pad_b = diff - pad_a
+                    pad_widths = [
+                        (i, j) for i, j in zip(pad_a.tolist(), pad_b.tolist())
+                    ]
+                    pad_widths.insert(0, (0, 0))
+                    arr = src.read(
+                        indexes=self.channels,
+                        out_shape=out_shape,
+                        resampling=self.resampling
+                    )
+                    if arr.shape != self.target_shape:
+                        conf = dict()
+                        if self.pad_aspect == 'nodata':
+                            conf['mode'] = 'constant'
+                            conf['constant_values'] = src.nodata
+                        elif isinstance(self.pad_aspect, (int, float, complex)):
+                            conf['mode'] = 'constant'
+                            conf['constant_values'] = self.pad_aspect
+                        else:
+                            conf['mode'] = self.pad_aspect
+                        arr = np.pad(
+                            array=arr,
+                            pad_width=pad_widths,
+                            **conf
+                        )
                     if self.tensor_maker:
                         arr = self.tensor_maker(arr)
                     if self.transform:
@@ -71,7 +149,7 @@ class ReadableImageDataset(Dataset):
                     return torch.unsqueeze(input=arr, dim=0)
         else:
             raise FileNotFoundError(
-                f"File don't exist: {self.path_list[index]}"
+                f"File doesn't exist: {self.path_list[index]}"
             )
 
     def get_meta(self, idx):
@@ -312,6 +390,9 @@ class ReadableImagePairDataset(Dataset):
             self,
             image_list: Sequence[Union[str, Path]],
             label_list: Sequence[Union[str, Path]],
+            target_shape: Sequence[int, int] = None,
+            pad_aspect: str = None,
+            image_resampling: int = 0,
             image_channels: Union[int, Sequence[int]] = None,
             label_channels: Union[int, Sequence[int]] = 1,
             image_maker: Callable = image_to_tensor,
@@ -336,21 +417,50 @@ class ReadableImagePairDataset(Dataset):
         self.label_channels = label_channels
         self.img_ds = ReadableImageDataset(
             path_list=image_list,
+            target_shape=target_shape,
+            pad_aspect=pad_aspect,
+            resampling=image_resampling,
             transform=None,
             channels=image_channels,
-            tensor_maker=image_maker
+            converter=image_maker
         )
         self.lbl_ds = ReadableImageDataset(
             path_list=label_list,
+            target_shape=target_shape,
+            pad_aspect=pad_aspect,
+            resampling=0,
             transform=None,
             channels=label_channels,
-            tensor_maker=label_maker
+            converter=label_maker
         )
         if transform:
             assert isinstance(transform, TransformPair), (
                 "'transform' is not a valid TransformPair object"
             )
         self.transform = transform
+
+        if isinstance(target_shape, int):
+            target_shape = (target_shape, target_shape)
+        assert isinstance(
+            target_shape, Sequence
+        ) and (len(target_shape) == 2) and all(
+            [isinstance(x, int) and x > 0 for x in target_shape]
+        ), f"Invalid 'target_shape': {target_shape}"
+        self.target_shape = target_shape
+
+        if pad_aspect:
+            assert isinstance(pad_aspect, str) and pad_aspect in {
+                'symmetric', 'reflect', 'edge', 'nodata'
+
+            }, (
+                f"Invalid padding: {pad_aspect}"
+            )
+        self.pad_aspect = pad_aspect
+
+        assert isinstance(image_resampling, int) and (
+                image_resampling in set(range(15))
+        ), f"Unknown resampling: {image_resampling}"
+        self.image_resampling = image_resampling
 
     def all_readable(self):
         return (
@@ -410,6 +520,9 @@ class ReadableImagePairDataset(Dataset):
                 ReadableImagePairDataset(
                     image_list=get_subsample(self.img_ds.get_paths()),
                     label_list=get_subsample(self.lbl_ds.get_paths()),
+                    target_shape=self.target_shape,
+                    pad_aspect=self.pad_aspect,
+                    image_resampling=self.image_resampling,
                     transform=self.transform,
                     image_channels=self.image_channels,
                     label_channels=self.label_channels
@@ -468,19 +581,24 @@ class DatasetConfigurator(object):
             self,
             image_channels: Union[int, Sequence[int]] = None,
             label_channels: Union[int, Sequence[int]] = 1,
-            image_maker: Callable = image_to_tensor,
-            label_maker: Callable = label_to_tensor,
+            target_shape: Sequence[int, int] = None,
+            pad_aspect: str = None,
+            image_resampling: int = 0,
+            image_converter: Callable = image_to_tensor,
+            label_converter: Callable = label_to_tensor,
             transform: TransformPair = None,
-
     ):
         if (self.image_list is not None) and (self.label_list is not None):
             return ReadableImagePairDataset(
                 image_list=self.image_list,
                 label_list=self.label_list,
+                target_shape=target_shape,
+                pad_aspect=pad_aspect,
+                image_resampling=image_resampling,
                 image_channels=image_channels,
                 label_channels=label_channels,
-                image_maker=image_maker,
-                label_maker=label_maker,
+                image_maker=image_converter,
+                label_maker=label_converter,
                 transform=transform,
             )
         else:
@@ -499,7 +617,7 @@ class DatasetConfigurator(object):
                 path_list=self.image_list,
                 transform=transform,
                 channels=channels,
-                tensor_maker=tensor_maker
+                converter=tensor_maker
             )
         else:
             raise AssertionError(
@@ -517,7 +635,7 @@ class DatasetConfigurator(object):
                 path_list=self.label_list,
                 transform=transform,
                 channels=channels,
-                tensor_maker=tensor_maker
+                converter=tensor_maker
             )
         else:
             raise AssertionError(

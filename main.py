@@ -48,8 +48,8 @@ if __name__ == '__main__':
         image_channels=(1, 2, 3),
         label_channels=1,
         transform=None,
-        image_maker=image_to_tensor,
-        label_maker=label_to_tensor
+        image_converter=image_to_tensor,
+        label_converter=label_to_tensor
     )
 
     train_dataset, val_dataset = train_dataset.split(
@@ -77,8 +77,8 @@ if __name__ == '__main__':
         image_channels=(1, 2, 3),
         label_channels=1,
         transform=None,
-        image_maker=image_to_tensor,
-        label_maker=label_to_tensor
+        image_converter=image_to_tensor,
+        label_converter=label_to_tensor
     )
 
     predict_dataset = DatasetConfigurator(
