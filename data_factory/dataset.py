@@ -571,7 +571,7 @@ class DatasetConfigurator(object):
             else:
                 img_dir = Path(data_map["image_directory"])
             img_list = [
-                (img_dir / '.'.join([stem, data_map['file_extension']]))
+                (img_dir / '.'.join([stem, data_map['image_ext']]))
                 for stem in keys
             ]
         else:
@@ -583,7 +583,7 @@ class DatasetConfigurator(object):
             else:
                 lbl_dir = Path(data_map["label_directory"])
             lbl_list = [
-                (lbl_dir / '.'.join([stem, data_map['file_extension']]))
+                (lbl_dir / '.'.join([stem, data_map['label_ext']]))
                 for stem in keys
             ]
         else:
