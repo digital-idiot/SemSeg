@@ -43,4 +43,3 @@ def make_divisible(value, divisor: int, min_value: int = None):
     if new_value < 0.9 * value:
         new_value += divisor
     return new_value
-

@@ -58,3 +58,18 @@ class WrappedMetric(object):
         kwargs = self.kwargs.copy()
         kwargs.update(extra_args)
         return self.metric(**kwargs)
+
+
+class WrappedClass(object):
+    def __init__(self, maker: Callable, *args, **kwargs):
+        self.maker = maker
+        self.args = args
+        self.kwargs = kwargs
+        self.instance = None
+
+    def __enter__(self):
+        self.instance = self.maker(*self.args, **self.kwargs)
+        return self.instance
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.instance = None

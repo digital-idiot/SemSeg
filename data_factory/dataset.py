@@ -195,7 +195,9 @@ class ReadableImageDataset(Dataset):
 
     def writable_clone(
             self,
-            dst_dir: Union[Union[str, Path], Union[Sequence[Union[str, Path]]]]
+            dst_dir: Union[
+                Union[str, Path], Union[Sequence[Union[str, Path]]]
+            ]
     ):
         src_filenames = self.get_filenames()
         if isinstance(dst_dir, str):
@@ -224,11 +226,15 @@ class ReadableImageDataset(Dataset):
                 assert not(p_dir.is_file()), (
                     f'File exists instead of directory: {p_dir}'
                 )
-                p_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+                p_dir.mkdir(
+                    mode=0o755, parents=True, exist_ok=True
+                )
             file_paths.append(p_dir)
 
         meta_list = self.get_metas()
-        return WriteableImageDataset(path_list=file_paths, meta_list=meta_list)
+        return WriteableImageDataset(
+            path_list=file_paths, meta_list=meta_list
+        )
 
     def split(self, ratios: Sequence[int], random: bool = True):
         if not isinstance(ratios, np.ndarray):
@@ -273,7 +279,9 @@ class WritableDataset(object, metaclass=ABCMeta):
 
     @abstractmethod
     def write(self, idx: int, data: Any, overwrite: bool = False):
-        raise NotImplementedError("'write' method has not been implemented!")
+        raise NotImplementedError(
+            "'write' method has not been implemented!"
+        )
 
     @abstractmethod
     def write_batch(
@@ -317,7 +325,12 @@ class WriteableImageDataset(WritableDataset):
         ]
         self.meta_list = meta_list
 
-    def write(self, idx: int, data: np.ndarray, overwrite: bool = False):
+    def write(
+            self,
+            idx: int,
+            data: np.ndarray,
+            overwrite: bool = False
+    ):
         dst_path = self.path_list[idx]
         dst_meta = self.meta_list[idx]
         assert data.ndim == 3, (
@@ -339,7 +352,9 @@ class WriteableImageDataset(WritableDataset):
                 "ignore", category=NotGeoreferencedWarning
             )
             if not overwrite and dst_path.is_file():
-                raise FileExistsError(f"File already exists: {str(dst_path)}")
+                raise FileExistsError(
+                    f"File already exists: {str(dst_path)}"
+                )
             try:
                 with rio.open(dst_path, 'w', **dst_meta) as dst:
                     dst.write(data)

@@ -1,7 +1,13 @@
+import torch
+import torch.nn as tnn
+from abc import ABCMeta
+from random import uniform
 from typing import Callable
+from typing import Sequence
+from abc import abstractmethod
 from random import random as toss
 from random import choice as choose
-from abc import ABCMeta, abstractmethod
+from torchvision.transforms.functional import adjust_sharpness
 
 
 class TransformPair(metaclass=ABCMeta):
@@ -122,3 +128,20 @@ class SegmentationTransform(TransformPair):
             yield image_transform, label_transform
         else:
             yield dummy_transform, dummy_transform
+
+
+class RandomSharpness(tnn.Module):
+    def __init__(self, sharpness_range: Sequence[float, float]):
+        super(RandomSharpness, self).__init__()
+        assert isinstance(
+            sharpness_range, Sequence
+        ) and (len(sharpness_range) == 2) and all(
+            [isinstance(n, (int, float)) for n in sharpness_range]
+        ), f"Invalid 'sharpness_range': {sharpness_range}"
+        self.sharpness_range = sorted(sharpness_range, reverse=False)
+
+    def forward(self, x: torch.Tensor):
+        return adjust_sharpness(
+            img=x,
+            sharpness_factor=uniform(*self.sharpness_range)
+        )
