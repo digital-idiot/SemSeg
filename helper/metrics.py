@@ -67,7 +67,7 @@ class SegmentationMetrics(MetricCollection):
                 absent_score=0.0,
                 threshold=0.5,
                 multilabel=False,
-                reduction='none'
+                average='none'
             ),
             'F1': F1Score(
                 num_classes=num_classes,

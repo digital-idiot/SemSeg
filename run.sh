@@ -11,8 +11,14 @@ do
     *) echo "Unexpected option: $1" ;;
   esac
 done
+
+if [[ -n "$PORT" ]]; then
+   PORT='6006'
+fi
+if [[ -n "$HOST" ]]; then
+   HOST='127.0.0.1'
+fi
 rm -rf logs/FloodNet/*
-micromamba activate PySeg
 echo "Tensorboard ⏩ ${PORT}:${HOST}"
 python main.py &
 tensorboard --logdir logs/FloodNet --port "${PORT}" --host "${HOST}" &
