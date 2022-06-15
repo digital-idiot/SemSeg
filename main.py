@@ -172,7 +172,7 @@ if __name__ == '__main__':
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         num_workers=8,
-        batch_size=8,
+        batch_size=64,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
     )
@@ -227,42 +227,42 @@ if __name__ == '__main__':
     # )
 
     # noinspection SpellCheckingInspection
-    net.hparams.lr = tune_lr(
-        model=net,
-        tuning_params={
-            "mode": "exponential",
-            "datamodule": data_module,
-            "min_lr": 1e-08,
-            "max_lr": 1.0
-        },
-        trainer_args={
-            "callbacks": [
-                StochasticWeightAveraging(swa_lrs=1e-2),
-                EarlyStopping(
-                    monitor="Validation-Mean_Loss",
-                    mode="min",
-                    patience=10,
-                    strict=True,
-                    check_finite=True,
-                    min_delta=1e-3,
-                    check_on_train_epoch_end=False,
-                )
-            ],
-            "accumulate_grad_batches": 1,
-            "check_val_every_n_epoch": 10,
-            "num_sanity_val_steps": 0,
-            "detect_anomaly": False,
-            "log_every_n_steps": 1,
-            "enable_progress_bar": True,
-            "precision": 16,
-            "sync_batchnorm": False,
-            "enable_model_summary": False,
-            "max_epochs": max_epochs,
-            "accelerator": "gpu",
-            "devices": -1,
-            # "strategy": DDPStrategy(find_unused_parameters=False),
-        }
-    )
+    # net.hparams.lr = tune_lr(
+    #     model=net,
+    #     tuning_params={
+    #         "mode": "exponential",
+    #         "datamodule": data_module,
+    #         "min_lr": 1e-08,
+    #         "max_lr": 1.0
+    #     },
+    #     trainer_args={
+    #         "callbacks": [
+    #             StochasticWeightAveraging(swa_lrs=1e-2),
+    #             EarlyStopping(
+    #                 monitor="Validation-Mean_Loss",
+    #                 mode="min",
+    #                 patience=10,
+    #                 strict=True,
+    #                 check_finite=True,
+    #                 min_delta=1e-3,
+    #                 check_on_train_epoch_end=False,
+    #             )
+    #         ],
+    #         "accumulate_grad_batches": 1,
+    #         "check_val_every_n_epoch": 10,
+    #         "num_sanity_val_steps": 0,
+    #         "detect_anomaly": False,
+    #         "log_every_n_steps": 1,
+    #         "enable_progress_bar": True,
+    #         "precision": 16,
+    #         "sync_batchnorm": False,
+    #         "enable_model_summary": False,
+    #         "max_epochs": max_epochs,
+    #         "accelerator": "gpu",
+    #         "devices": -1,
+    #         # "strategy": DDPStrategy(find_unused_parameters=False),
+    #     }
+    # )
 
     trainer = Trainer(
         logger=TensorBoardLogger(save_dir="logs", name='FloodNet'),
