@@ -121,15 +121,15 @@ class OhemCrossEntropyLoss(Module):
         self.ignore_index = ignore_label
 
     # noinspection SpellCheckingInspection
-    def forward(self, preds: Tensor, labels: Tensor) -> Tensor:
-        n_min = labels[labels != self.ignore_label].numel() // 16
+    def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
+        n_min = targets[targets != self.ignore_label].numel() // 16
         if self.class_ids:
             weights = class_weights(
-                x=labels,
+                x=targets,
                 class_ids=torch.tensor(
                     data=self.class_ids,
                     dtype=torch.long,
-                    device=labels.device
+                    device=targets.device
                 )
             )
         else:
@@ -137,7 +137,7 @@ class OhemCrossEntropyLoss(Module):
 
         loss = cross_entropy(
             input=preds,
-            target=labels,
+            target=targets,
             weight=weights,
             ignore_index=self.ignore_index,
             reduction='none',
