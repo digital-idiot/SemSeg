@@ -131,7 +131,7 @@ class SegmentationTransform(TransformPair):
 
 
 class RandomSharpness(tnn.Module):
-    def __init__(self, sharpness_range: Sequence[float, float]):
+    def __init__(self, sharpness_range: Sequence[float]):
         super(RandomSharpness, self).__init__()
         assert isinstance(
             sharpness_range, Sequence
