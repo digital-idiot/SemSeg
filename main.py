@@ -294,7 +294,7 @@ if __name__ == '__main__':
         check_val_every_n_epoch=10,
         num_sanity_val_steps=0,
         detect_anomaly=False,
-        log_every_n_steps=50,
+        log_every_n_steps=5,
         enable_progress_bar=True,
         precision=16,
         strategy=DDPStrategy(find_unused_parameters=False),
