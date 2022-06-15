@@ -45,6 +45,7 @@ class SegmentationTransform(TransformPair):
                 f"Unsupported mode: {mode}!\n" +
                 f"Valid modes are: {self.__valid_modes}"
             )
+        self.__transform_map = list()
 
     def get_mode(self):
         return self._mode
