@@ -156,13 +156,13 @@ if __name__ == '__main__':
     )
 
     predict_writer = predict_dataset.writable_clone(dst_dir='Predictions')
-    data_module = IgniteDataModule.from_datasets(
+    data_module = IgniteDataModule(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
-        num_workers=16,
-        batch_size=2,
+        num_workers=8,
+        batch_size=1,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
     )
