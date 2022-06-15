@@ -172,59 +172,59 @@ if __name__ == '__main__':
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         num_workers=8,
-        batch_size=1,
+        batch_size=128,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
     )
 
     # Tuning
     # noinspection SpellCheckingInspection
-    data_module.batch_size = tune_batch(
-        model=net,
-        tuning_params={
-            "mode": "power",
-            "datamodule": data_module
-        },
-        trainer_args={
-            "callbacks": [
-                StochasticWeightAveraging(swa_lrs=1e-2),
-                RichProgressBar(),
-                ShowMetric(),
-                LogConfusionMatrix(),
-                PredictionWriter(writable_datasets=[predict_writer]),
-                ModelCheckpoint(
-                    dirpath="checkpoints",
-                    filename='FloodNet-{epoch}-{validation_loss:.3f}',
-                    monitor='Validation-Mean_Loss',
-                    save_top_k=2,
-                    save_last=True,
-                    save_on_train_epoch_end=False
-                ),
-                EarlyStopping(
-                    monitor="Validation-Mean_Loss",
-                    mode="min",
-                    patience=10,
-                    strict=True,
-                    check_finite=True,
-                    min_delta=1e-3,
-                    check_on_train_epoch_end=False,
-                )
-            ],
-            "accumulate_grad_batches": 1,
-            "check_val_every_n_epoch": 10,
-            "num_sanity_val_steps": 0,
-            "detect_anomaly": False,
-            "log_every_n_steps": 1,
-            "enable_progress_bar": True,
-            "precision": 16,
-            "sync_batchnorm": False,
-            "enable_model_summary": False,
-            "max_epochs": max_epochs,
-            "accelerator": "gpu",
-            "devices": -1
-            # "strategy": DDPStrategy(find_unused_parameters=False),
-        }
-    )
+    # data_module.batch_size = tune_batch(
+    #     model=net,
+    #     tuning_params={
+    #         "mode": "power",
+    #         "datamodule": data_module
+    #     },
+    #     trainer_args={
+    #         "callbacks": [
+    #             StochasticWeightAveraging(swa_lrs=1e-2),
+    #             RichProgressBar(),
+    #             ShowMetric(),
+    #             LogConfusionMatrix(),
+    #             PredictionWriter(writable_datasets=[predict_writer]),
+    #             ModelCheckpoint(
+    #                 dirpath="checkpoints",
+    #                 filename='FloodNet-{epoch}-{validation_loss:.3f}',
+    #                 monitor='Validation-Mean_Loss',
+    #                 save_top_k=2,
+    #                 save_last=True,
+    #                 save_on_train_epoch_end=False
+    #             ),
+    #             EarlyStopping(
+    #                 monitor="Validation-Mean_Loss",
+    #                 mode="min",
+    #                 patience=10,
+    #                 strict=True,
+    #                 check_finite=True,
+    #                 min_delta=1e-3,
+    #                 check_on_train_epoch_end=False,
+    #             )
+    #         ],
+    #         "accumulate_grad_batches": 1,
+    #         "check_val_every_n_epoch": 10,
+    #         "num_sanity_val_steps": 0,
+    #         "detect_anomaly": False,
+    #         "log_every_n_steps": 1,
+    #         "enable_progress_bar": True,
+    #         "precision": 16,
+    #         "sync_batchnorm": False,
+    #         "enable_model_summary": False,
+    #         "max_epochs": max_epochs,
+    #         "accelerator": "gpu",
+    #         "devices": -1
+    #         # "strategy": DDPStrategy(find_unused_parameters=False),
+    #     }
+    # )
 
     # noinspection SpellCheckingInspection
     net.hparams.lr = tune_lr(
@@ -248,7 +248,7 @@ if __name__ == '__main__':
                     check_on_train_epoch_end=False,
                 )
             ],
-            "accumulate_grad_batches": 5,
+            "accumulate_grad_batches": 1,
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
