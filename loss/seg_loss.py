@@ -105,11 +105,11 @@ class OhemCrossEntropyLoss(Module):
             self,
             ignore_label: int = 0,
             class_ids=Union[int, Sequence[int]],
-            thresh: float = 0.7
+            threshold: float = 0.7
     ) -> None:
         super().__init__()
         self.ignore_label = ignore_label
-        self.thresh = -torch.log(torch.tensor(thresh, dtype=torch.float))
+        self.thresh = -torch.log(torch.tensor(threshold, dtype=torch.float))
         if class_ids is not None:
             if isinstance(class_ids, int):
                 class_ids = tuple(range(class_ids))

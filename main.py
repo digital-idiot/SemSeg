@@ -54,13 +54,13 @@ if __name__ == '__main__':
         amsbound=False
     )
 
-    loss_fn = WrappedLoss(
-        loss_fn=OhemCrossEntropyLoss,
-        ignore_label=0,
-        class_ids=10,
-        thresh=0.7
+    loss_function = WrappedLoss(
+        loss_fn=OhemCrossEntropyLoss(
+            ignore_label=0,
+            class_ids=10,
+            threshold=0.7
+        )
     )
-    loss_function = OhemCrossEntropyLoss
 
     augmentor = SegmentationTransform(mode='any')
     augmentor.add_transform(
