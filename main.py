@@ -1,6 +1,6 @@
 import warnings
-from tuners.tune import tune_lr
-from tuners.tune import tune_batch
+# from tuners.tune import tune_lr
+# from tuners.tune import tune_batch
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
 from core.models import TopFormerModel
