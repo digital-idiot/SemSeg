@@ -35,8 +35,7 @@ def tune_lr(
     dummy_trainer = Trainer(
         **trainer_args
     )
-    tuner = Tuner(dummy_trainer)
-    lr_finder = tuner.lr_find(model=model, **tuning_params)
+    lr_finder = dummy_trainer.tuner.lr_find(model=model, **tuning_params)
     lr = lr_finder.suggestion()
-    del tuner, dummy_trainer
+    del dummy_trainer
     return lr
