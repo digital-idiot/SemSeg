@@ -8,7 +8,7 @@ do
     -p | --port) PORT="$2" ; shift 2 ;;
     -h | --host) HOST="$2" ; shift 2 ;;
              --) shift;        break ;;
-    *) echo "Unexpected option: $1 - this should not happen." ;;
+    *) echo "Unexpected option: $1" ;;
   esac
 done
 rm -rf logs/FloodNet/*
