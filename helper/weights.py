@@ -15,4 +15,5 @@ def class_weights(
     weights = n_classes / torch.log1p(frequencies)
     weights[mask] = 0
     weights = weights / weights.sum()
+    print(weights.size())
     return weights
