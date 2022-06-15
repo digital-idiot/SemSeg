@@ -7,7 +7,7 @@ from pytorch_lightning.core.lightning import LightningModule
 
 def tune_batch(
         model: LightningModule,
-        tuning_params: Dict[str: Any] = None,
+        tuning_params: Dict[str, Any] = None,
         trainer_args: Dict[str, Any] = None
 ):
     if trainer_args is None:
