@@ -38,7 +38,7 @@ warnings.filterwarnings('error', category=UserWarning)
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
-    image_shape = (1024, 1024)
+    image_shape = (3968, 2944)
     max_epochs = 500
     model = TopFormerModel(
         num_classes=10,
@@ -186,30 +186,30 @@ if __name__ == '__main__':
             "datamodule": data_module
         },
         trainer_args={
-            # "callbacks": [
-            #     StochasticWeightAveraging(swa_lrs=1e-2),
-            #     RichProgressBar(),
-            #     ShowMetric(),
-            #     LogConfusionMatrix(),
-            #     PredictionWriter(writable_datasets=[predict_writer]),
-            #     ModelCheckpoint(
-            #         dirpath="checkpoints",
-            #         filename='FloodNet-{epoch}-{validation_loss:.3f}',
-            #         monitor='Validation-Mean_Loss',
-            #         save_top_k=2,
-            #         save_last=True,
-            #         save_on_train_epoch_end=False
-            #     ),
-            #     EarlyStopping(
-            #         monitor="Validation-Mean_Loss",
-            #         mode="min",
-            #         patience=10,
-            #         strict=True,
-            #         check_finite=True,
-            #         min_delta=1e-3,
-            #         check_on_train_epoch_end=False,
-            #     )
-            # ],
+            "callbacks": [
+                StochasticWeightAveraging(swa_lrs=1e-2),
+                RichProgressBar(),
+                ShowMetric(),
+                LogConfusionMatrix(),
+                PredictionWriter(writable_datasets=[predict_writer]),
+                ModelCheckpoint(
+                    dirpath="checkpoints",
+                    filename='FloodNet-{epoch}-{validation_loss:.3f}',
+                    monitor='Validation-Mean_Loss',
+                    save_top_k=2,
+                    save_last=True,
+                    save_on_train_epoch_end=False
+                ),
+                EarlyStopping(
+                    monitor="Validation-Mean_Loss",
+                    mode="min",
+                    patience=10,
+                    strict=True,
+                    check_finite=True,
+                    min_delta=1e-3,
+                    check_on_train_epoch_end=False,
+                )
+            ],
             "accumulate_grad_batches": 1,
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
@@ -255,12 +255,12 @@ if __name__ == '__main__':
             "log_every_n_steps": 1,
             "enable_progress_bar": True,
             "precision": 16,
-            "strategy": DDPStrategy(find_unused_parameters=False),
             "sync_batchnorm": False,
             "enable_model_summary": False,
             "max_epochs": max_epochs,
             "accelerator": "gpu",
-            "devices": -1
+            "devices": -1,
+            # "strategy": DDPStrategy(find_unused_parameters=False),
         }
     )
 
