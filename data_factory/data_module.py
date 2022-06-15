@@ -103,7 +103,7 @@ class IgniteDataModule(LightningDataModule):
             ds=self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle_flag=self.shuffle,
+            shuffle_flag=False,
             collate=self.collate_fn
         )
 
@@ -116,7 +116,7 @@ class IgniteDataModule(LightningDataModule):
                     ds=ds,
                     batch_size=self.batch_size,
                     num_workers=self.num_workers,
-                    shuffle_flag=self.shuffle,
+                    shuffle_flag=False,
                     collate=self.collate_fn
                 )
                 for ds in self.test_dataset
@@ -125,7 +125,7 @@ class IgniteDataModule(LightningDataModule):
             ds=self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle_flag=self.shuffle,
+            shuffle_flag=False,
             collate=self.collate_fn
         )
 
@@ -138,7 +138,7 @@ class IgniteDataModule(LightningDataModule):
                     ds=ds,
                     batch_size=1,
                     num_workers=self.num_workers,
-                    shuffle_flag=self.shuffle,
+                    shuffle_flag=False,
                     collate=self.collate_fn
                 )
                 for ds in self.predict_dataset
@@ -147,6 +147,6 @@ class IgniteDataModule(LightningDataModule):
             ds=self.predict_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle_flag=self.shuffle,
+            shuffle_flag=False,
             collate=self.collate_fn
         )
