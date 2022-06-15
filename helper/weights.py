@@ -12,9 +12,7 @@ def class_weights(
     frequencies = (x[:, None] == class_ids[None, :]).sum(dim=1)
     mask = frequencies == 0
     frequencies = frequencies.to(dtype=torch.get_default_dtype())
-    weights = n_classes.to(
-        dtype=torch.get_default_dtype()
-    ) / torch.log1p(frequencies)
+    weights = n_classes / torch.log1p(frequencies)
     weights[mask] = 0
     weights = weights / weights.sum()
     return weights
