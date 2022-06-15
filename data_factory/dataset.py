@@ -30,7 +30,7 @@ class ReadableImageDataset(Dataset):
             path_list: Sequence[Union[str, Path]],
             target_shape: Sequence[int] = None,
             pad_aspect: str = None,
-            resampling: int = 1,
+            resampling: int = 0,
             transform: Callable = None,
             channels: Union[int, Sequence[int]] = None,
             converter: Callable = label_to_tensor
@@ -408,6 +408,7 @@ class ReadableImagePairDataset(Dataset):
             target_shape: Sequence[int] = None,
             pad_aspect: str = None,
             image_resampling: int = 0,
+            label_resampling: int = 0,
             image_channels: Union[int, Sequence[int]] = None,
             label_channels: Union[int, Sequence[int]] = 1,
             image_maker: Callable = image_to_tensor,
@@ -443,7 +444,7 @@ class ReadableImagePairDataset(Dataset):
             path_list=label_list,
             target_shape=target_shape,
             pad_aspect=pad_aspect,
-            resampling=0,
+            resampling=label_resampling,
             transform=None,
             channels=label_channels,
             converter=label_maker
@@ -599,6 +600,7 @@ class DatasetConfigurator(object):
             target_shape: Sequence[int] = None,
             pad_aspect: str = None,
             image_resampling: int = 0,
+            label_resampling: int = 0,
             image_converter: Callable = image_to_tensor,
             label_converter: Callable = label_to_tensor,
             transform: TransformPair = None,
@@ -610,6 +612,7 @@ class DatasetConfigurator(object):
                 target_shape=target_shape,
                 pad_aspect=pad_aspect,
                 image_resampling=image_resampling,
+                label_resampling=label_resampling,
                 image_channels=image_channels,
                 label_channels=label_channels,
                 image_maker=image_converter,
@@ -624,12 +627,18 @@ class DatasetConfigurator(object):
     def generate_image_dataset(
             self,
             transform: Callable = None,
+            target_shape: Sequence[int] = None,
+            pad_aspect: str = None,
+            resampling: int = 0,
             channels: Union[int, Sequence[int]] = None,
             tensor_maker: Callable = image_to_tensor
     ):
         if self.image_list is not None:
             return ReadableImageDataset(
                 path_list=self.image_list,
+                target_shape=target_shape,
+                pad_aspect=pad_aspect,
+                resampling=resampling,
                 transform=transform,
                 channels=channels,
                 converter=tensor_maker
@@ -642,12 +651,18 @@ class DatasetConfigurator(object):
     def generate_label_dataset(
             self,
             transform: Callable = None,
+            target_shape: Sequence[int] = None,
+            pad_aspect: str = None,
+            resampling: int = 0,
             channels: Union[int, Sequence[int]] = None,
             tensor_maker: Callable = label_to_tensor
     ):
         if self.label_list is not None:
             return ReadableImageDataset(
                 path_list=self.label_list,
+                target_shape=target_shape,
+                pad_aspect=pad_aspect,
+                resampling=resampling,
                 transform=transform,
                 channels=channels,
                 converter=tensor_maker

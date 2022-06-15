@@ -96,6 +96,7 @@ if __name__ == '__main__':
         target_shape=image_shape,
         pad_aspect='symmetric',
         image_resampling=0,
+        label_resampling=0,
         transform=augmentor,
         image_converter=image_to_tensor,
         label_converter=label_to_tensor
@@ -109,6 +110,7 @@ if __name__ == '__main__':
         target_shape=image_shape,
         pad_aspect='symmetric',
         image_resampling=0,
+        label_resampling=0,
         transform=None,
         image_converter=image_to_tensor,
         label_converter=label_to_tensor
@@ -136,6 +138,7 @@ if __name__ == '__main__':
         target_shape=image_shape,
         pad_aspect='symmetric',
         image_resampling=0,
+        label_resampling=0,
         transform=None,
         image_converter=image_to_tensor,
         label_converter=label_to_tensor
@@ -145,6 +148,9 @@ if __name__ == '__main__':
         conf_path="Data/FloodNetData/Test/Test.json"
     ).generate_image_dataset(
         transform=None,
+        target_shape=image_shape,
+        pad_aspect='symmetric',
+        resampling=0,
         channels=(1, 2, 3),
         tensor_maker=image_to_tensor
     )
