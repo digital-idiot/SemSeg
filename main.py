@@ -182,7 +182,7 @@ if __name__ == '__main__':
     data_module.batch_size = tune_batch(
         model=net,
         tuning_params={
-            "mode": "binsearch",
+            "mode": "power",
             "datamodule": data_module
         },
         trainer_args={
@@ -210,11 +210,11 @@ if __name__ == '__main__':
                     check_on_train_epoch_end=False,
                 )
             ],
-            "accumulate_grad_batches": 5,
+            "accumulate_grad_batches": 1,
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
-            "log_every_n_steps": 5,
+            # "log_every_n_steps": 5,
             "enable_progress_bar": True,
             "precision": 16,
             "sync_batchnorm": False,
@@ -252,7 +252,7 @@ if __name__ == '__main__':
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
-            "log_every_n_steps": 5,
+            # "log_every_n_steps": 5,
             "enable_progress_bar": True,
             "precision": 16,
             "strategy": DDPStrategy(find_unused_parameters=False),
