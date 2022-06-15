@@ -59,13 +59,6 @@ class ReadableImageDataset(Dataset):
         ), f"Invalid 'target_shape': {target_shape}"
         self.target_shape = tuple(target_shape)
 
-        if pad_aspect:
-            assert isinstance(pad_aspect, str) and pad_aspect in {
-                'symmetric', 'reflect', 'edge', 'nodata'
-
-            }, (
-                f"Invalid padding: {pad_aspect}"
-            )
         self.pad_aspect = pad_aspect
         assert isinstance(resampling, int) and (
                 resampling in set(range(15))

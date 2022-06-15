@@ -8,6 +8,7 @@ from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
+from helper.assist import WrappedLoss
 from helper.callbacks import PredictionWriter
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     image_shape = (1024, 1024)
     max_epochs = 500
     model = TopFormerModel(
-        num_classes=8,
+        num_classes=10,
         config_alias='B',
         input_channels=3,
         injection_type='dot_sum',
@@ -51,6 +52,13 @@ if __name__ == '__main__':
         lr=1e-3,
         final_lr=0.1,
         amsbound=False
+    )
+
+    loss_fn = WrappedLoss(
+        loss_fn=OhemCrossEntropyLoss,
+        ignore_label=0,
+        class_ids=10,
+        thresh=0.7
     )
     loss_function = OhemCrossEntropyLoss
 
@@ -94,7 +102,7 @@ if __name__ == '__main__':
         image_channels=(1, 2, 3),
         label_channels=1,
         target_shape=image_shape,
-        pad_aspect='symmetric',
+        pad_aspect=0,
         image_resampling=0,
         label_resampling=0,
         transform=augmentor,
@@ -108,7 +116,7 @@ if __name__ == '__main__':
         image_channels=(1, 2, 3),
         label_channels=1,
         target_shape=image_shape,
-        pad_aspect='symmetric',
+        pad_aspect=0,
         image_resampling=0,
         label_resampling=0,
         transform=None,
@@ -127,7 +135,9 @@ if __name__ == '__main__':
         model=model,
         optimizer=optimizer,
         scheduler=scheduler,
-        criterion=loss_function
+        criterion=loss_function,
+        ignore_index=0,
+        normalize_cm='true'
     )
 
     test_dataset = DatasetConfigurator(
@@ -136,7 +146,7 @@ if __name__ == '__main__':
         image_channels=(1, 2, 3),
         label_channels=1,
         target_shape=image_shape,
-        pad_aspect='symmetric',
+        pad_aspect=0,
         image_resampling=0,
         label_resampling=0,
         transform=None,
