@@ -186,35 +186,35 @@ if __name__ == '__main__':
             "datamodule": data_module
         },
         trainer_args={
-            "callbacks": [
-                StochasticWeightAveraging(swa_lrs=1e-2),
-                RichProgressBar(),
-                ShowMetric(),
-                LogConfusionMatrix(),
-                PredictionWriter(writable_datasets=[predict_writer]),
-                ModelCheckpoint(
-                    dirpath="checkpoints",
-                    filename='FloodNet-{epoch}-{validation_loss:.3f}',
-                    monitor='Validation-Mean_Loss',
-                    save_top_k=2,
-                    save_last=True,
-                    save_on_train_epoch_end=False
-                ),
-                EarlyStopping(
-                    monitor="Validation-Mean_Loss",
-                    mode="min",
-                    patience=10,
-                    strict=True,
-                    check_finite=True,
-                    min_delta=1e-3,
-                    check_on_train_epoch_end=False,
-                )
-            ],
+            # "callbacks": [
+            #     StochasticWeightAveraging(swa_lrs=1e-2),
+            #     RichProgressBar(),
+            #     ShowMetric(),
+            #     LogConfusionMatrix(),
+            #     PredictionWriter(writable_datasets=[predict_writer]),
+            #     ModelCheckpoint(
+            #         dirpath="checkpoints",
+            #         filename='FloodNet-{epoch}-{validation_loss:.3f}',
+            #         monitor='Validation-Mean_Loss',
+            #         save_top_k=2,
+            #         save_last=True,
+            #         save_on_train_epoch_end=False
+            #     ),
+            #     EarlyStopping(
+            #         monitor="Validation-Mean_Loss",
+            #         mode="min",
+            #         patience=10,
+            #         strict=True,
+            #         check_finite=True,
+            #         min_delta=1e-3,
+            #         check_on_train_epoch_end=False,
+            #     )
+            # ],
             "accumulate_grad_batches": 1,
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
-            # "log_every_n_steps": 5,
+            "log_every_n_steps": 1,
             "enable_progress_bar": True,
             "precision": 16,
             "sync_batchnorm": False,
@@ -252,7 +252,7 @@ if __name__ == '__main__':
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
-            # "log_every_n_steps": 5,
+            "log_every_n_steps": 1,
             "enable_progress_bar": True,
             "precision": 16,
             "strategy": DDPStrategy(find_unused_parameters=False),
