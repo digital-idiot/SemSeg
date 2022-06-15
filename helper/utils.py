@@ -1,4 +1,6 @@
+import torch
 import pandas as pd
+from typing import Sequence
 from seaborn import heatmap
 from tabulate import tabulate
 from matplotlib import cm as mpl_cm
@@ -120,3 +122,16 @@ def format_report(report_dict: dict):
         report_end
     ])
     return report
+
+
+def delete_indices(tensor: torch.Tensor, indices: Sequence[int]):
+    if indices:
+        mask = torch.ones_like(
+            input=tensor,
+            dtype=torch.bool,
+            device=tensor.device
+        )
+        mask[indices] = False
+        return tensor[mask]
+    else:
+        return tensor

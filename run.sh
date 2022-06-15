@@ -2,7 +2,7 @@
 # TODO: log clean up and other housekeeping
 options=$(getopt -a -n run -o p:h: --long port:,host: -- "$@")
 eval set -- "$options"
-while :
+while true:
 do
   case "$1" in
     -p | --port) PORT="$2" ; shift 2 ;;

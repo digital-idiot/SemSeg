@@ -8,6 +8,7 @@ from torchmetrics import Accuracy
 from torchmetrics import Precision
 from torchmetrics import CohenKappa
 from torchmetrics import JaccardIndex
+from helper.utils import delete_indices
 from torchmetrics import ConfusionMatrix
 from torchmetrics import MetricCollection
 from torchmetrics import MatthewsCorrCoef
@@ -47,7 +48,7 @@ class SegmentationMetrics(MetricCollection):
                 num_classes=num_classes,
                 threshold=0.5,
                 mdmc_average='samplewise',
-                ignore_index=ignore_index,
+                ignore_index=None,
                 average='none',
                 top_k=None,
                 multiclass=multiclass
@@ -56,14 +57,14 @@ class SegmentationMetrics(MetricCollection):
                 num_classes=num_classes,
                 threshold=0.5,
                 mdmc_average='samplewise',
-                ignore_index=ignore_index,
+                ignore_index=None,
                 average='none',
                 top_k=None,
                 multiclass=multiclass
             ),
             'IoU': JaccardIndex(
                 num_classes=num_classes,
-                ignore_index=ignore_index,
+                ignore_index=None,
                 absent_score=0.0,
                 threshold=0.5,
                 multilabel=False,
@@ -74,7 +75,7 @@ class SegmentationMetrics(MetricCollection):
                 threshold=0.5,
                 average='none',
                 mdmc_average='samplewise',
-                ignore_index=ignore_index,
+                ignore_index=None,
                 top_k=None,
                 multiclass=multiclass
             ),
@@ -83,7 +84,7 @@ class SegmentationMetrics(MetricCollection):
                 num_classes=num_classes,
                 average='none',
                 mdmc_average='samplewise',
-                ignore_index=ignore_index,
+                ignore_index=None,
                 top_k=None,
                 multiclass=multiclass,
                 subset_accuracy=False
@@ -155,7 +156,12 @@ class SegmentationMetrics(MetricCollection):
             keepdim=False
         )
         for k in self.wrap_keys(self.vector_keys):
-            score_dict[k] = (1.0 * class_scores[k]).nanmean(
+            score_dict[k] = (
+                1.0 * delete_indices(
+                    tensor=class_scores[k],
+                    indices=self.ignore_index
+                )
+            ).nanmean(
                 dim=None, keepdim=False
             )
         for k in self.wrap_keys(self.scalar_keys):
@@ -169,18 +175,22 @@ class SegmentationMetrics(MetricCollection):
         score_dict = self.compute()
         print([(k, score_dict[self.wrap_keys(k)].shape) for k in self.vector_keys])
         data = torch.stack(
-            tensors=[score_dict[self.wrap_keys(k)] for k in self.vector_keys],
+            tensors=[
+                delete_indices(
+                    tensor=score_dict[self.wrap_keys(k)],
+                    indices=self.ignore_index
+                )
+                for k in self.vector_keys
+            ],
             dim=-1
         ).tolist()
-        indexes = [f"C_{i}" for i in range(self.num_classes)]
-        if self.ignore_index:
-            data = data[:self.ignore_index] + data[(self.ignore_index + 1):]
-            true_indexes = (
-                indexes[:self.ignore_index] +
-                indexes[(self.ignore_index + 1):]
-            )
-        else:
-            true_indexes = indexes
+        indexes = [
+            f"C_{i}" for i in range(self.num_classes)
+        ]
+        true_indexes = [
+            attr for i, attr in enumerate(indexes)
+            if i not in {self.ignore_index}
+        ]
 
         class_df = pd.DataFrame(
             data=data,
