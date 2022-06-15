@@ -127,6 +127,7 @@ class ReadableImageDataset(Dataset):
                         out_shape=out_shape,
                         resampling=self.resampling
                     )
+                    print(arr.shape, pad_widths)
                     if arr.shape != self.target_shape:
                         conf = dict()
                         if self.pad_aspect == 'nodata':
