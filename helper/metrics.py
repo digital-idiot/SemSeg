@@ -167,7 +167,7 @@ class SegmentationMetrics(MetricCollection):
     @rank_zero_only
     def tabular_report(self):
         score_dict = self.compute()
-        print([score_dict[self.wrap_keys(k)].shape for k in self.vector_keys])
+        print([(k, score_dict[self.wrap_keys(k)].shape) for k in self.vector_keys])
         data = torch.stack(
             tensors=[score_dict[self.wrap_keys(k)] for k in self.vector_keys],
             dim=-1

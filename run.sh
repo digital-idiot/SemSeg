@@ -12,7 +12,8 @@ do
   esac
 done
 rm -rf logs/FloodNet/*
-micromama activate PySeg
+micromamba activate PySeg
+echo "Tensorboard ⏩ ${PORT}:${HOST}"
 python main.py &
 tensorboard --logdir logs/FloodNet --port "${PORT}" --host "${HOST}" &
 
