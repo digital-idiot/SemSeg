@@ -172,7 +172,7 @@ if __name__ == '__main__':
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         num_workers=8,
-        batch_size=64,
+        batch_size=8,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
     )
