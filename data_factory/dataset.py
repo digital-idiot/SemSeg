@@ -500,7 +500,7 @@ class ReadableImagePairDataset(Dataset):
         img = self.img_ds[index]
         lbl = self.lbl_ds[index]
         if self.transform:
-            image_transform, label_transform = self.transform()
+            image_transform, label_transform = next(self.transform())
             img = image_transform(img)
             lbl = label_transform(lbl)
         return img, lbl
