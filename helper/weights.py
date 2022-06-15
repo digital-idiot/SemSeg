@@ -9,11 +9,10 @@ def class_weights(
     class_ids = class_ids.view(-1).to(dtype=torch.long)
     n_classes = class_ids.numel()
     # noinspection PyUnresolvedReferences
-    frequencies = (x[:, None] == class_ids[None, :]).sum(dim=1)
+    frequencies = (x[:, None] == class_ids[None, :]).sum(dim=0, keepdims=False)
     mask = frequencies == 0
     frequencies = frequencies.to(dtype=torch.get_default_dtype())
     weights = n_classes / torch.log1p(frequencies)
     weights[mask] = 0
     weights = weights / weights.sum()
-    print(weights.size())
     return weights
