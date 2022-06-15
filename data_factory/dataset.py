@@ -115,20 +115,23 @@ class ReadableImageDataset(Dataset):
                             out_shape = tuple(img_shape)
                         else:
                             out_shape = self.target_shape
-                    diff = np.array(self.target_shape) - np.array(out_shape)
-                    pad_a = diff // 2
-                    pad_b = diff - pad_a
-                    pad_widths = [
-                        (i, j) for i, j in zip(pad_a.tolist(), pad_b.tolist())
-                    ]
-                    pad_widths.insert(0, (0, 0))
                     arr = src.read(
                         indexes=self.channels,
                         out_shape=out_shape,
                         resampling=self.resampling
                     )
-                    print(arr.shape, pad_widths)
-                    if arr.shape != self.target_shape:
+                    diff = np.array(self.target_shape) - np.array(out_shape)
+                    if np.any(a=(diff > 0)):
+                        pad_a = diff // 2
+                        pad_b = diff - pad_a
+                        pad_widths = [
+                            (i, j)
+                            for i, j in zip(pad_a.tolist(), pad_b.tolist())
+                        ]
+                        if arr.ndim > len(pad_widths):
+                            pad_widths = (
+                                 [(0, 0), ] * (arr.ndim - len(pad_widths))
+                            ) + pad_widths
                         conf = dict()
                         if self.pad_aspect == 'nodata':
                             conf['mode'] = 'constant'
