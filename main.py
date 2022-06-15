@@ -38,7 +38,7 @@ warnings.filterwarnings('error', category=UserWarning)
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
-    image_shape = (3968, 2944)
+    image_shape = (1536, 2048)
     max_epochs = 500
     model = TopFormerModel(
         num_classes=10,
