@@ -5,7 +5,7 @@ eval set -- "$options"
 
 PORT='6006'
 HOST='127.0.0.1'
-while true:
+while :
 do
   case "$1" in
     -p | --port) PORT="$2" ; shift 2 ;;
@@ -16,9 +16,9 @@ do
 done
 
 rm -rf logs/FloodNet/*
-echo "Tensorboard ⏩ ${PORT}:${HOST}"
+echo "Tensorboard Dashboard ⏩ ${HOST}:${PORT}"
 python main.py &
-tensorboard --logdir logs/FloodNet --port "${PORT}" --host "${HOST}" &
+tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" &
 
 wait
 echo "🏁 Complete 🏁"

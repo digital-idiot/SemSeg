@@ -183,7 +183,7 @@ class SegmentationMetrics(MetricCollection):
             ],
             dim=-1
         )
-        print(data.size())
+        print(data.size(), self.ignore_index)
         data = data.tolist()
         indexes = [
             f"C_{i}" for i in range(self.num_classes)
