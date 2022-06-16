@@ -183,7 +183,7 @@ if __name__ == '__main__':
         tuning_params={
             "mode": "power",
             "datamodule": data_module,
-            "max_trials": 3
+            "max_trials": 2
         },
         trainer_args={
             "callbacks": [
