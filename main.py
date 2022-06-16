@@ -3,12 +3,12 @@ from tuners.tune import tune_lr
 from tuners.tune import tune_batch
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
+from helper.assist import WrappedLoss
 from core.models import TopFormerModel
 from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
-from helper.assist import WrappedLoss
 from helper.callbacks import PredictionWriter
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
