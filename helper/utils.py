@@ -125,7 +125,9 @@ def format_report(report_dict: dict):
 
 
 def delete_indices(tensor: torch.Tensor, indices: Sequence[int]):
-    if indices:
+    if indices is None:
+        return tensor
+    else:
         mask = torch.ones_like(
             input=tensor,
             dtype=torch.bool,
@@ -133,5 +135,3 @@ def delete_indices(tensor: torch.Tensor, indices: Sequence[int]):
         )
         mask[indices] = False
         return tensor[mask]
-    else:
-        return tensor
