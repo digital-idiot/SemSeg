@@ -2,6 +2,9 @@
 # TODO: log clean up and other housekeeping
 options=$(getopt -a -n run -o p:h: --long port:,host: -- "$@")
 eval set -- "$options"
+
+PORT='6006'
+HOST='127.0.0.1'
 while true:
 do
   case "$1" in
@@ -12,12 +15,6 @@ do
   esac
 done
 
-if [[ -n "$PORT" ]]; then
-   PORT='6006'
-fi
-if [[ -n "$HOST" ]]; then
-   HOST='127.0.0.1'
-fi
 rm -rf logs/FloodNet/*
 echo "Tensorboard ⏩ ${PORT}:${HOST}"
 python main.py &
