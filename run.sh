@@ -17,7 +17,7 @@ done
 
 rm -rf logs/FloodNet/*
 python main.py &
-tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" &
+tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" --load_fast=false &
 
 wait
 echo "🏁 Complete 🏁"
