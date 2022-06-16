@@ -3,7 +3,7 @@
 options=$(getopt -a -n run -o p:h: --long port:,host: -- "$@")
 eval set -- "$options"
 
-PORT='6006'
+PORT='0'
 HOST='127.0.0.1'
 while :
 do
@@ -16,7 +16,6 @@ do
 done
 
 rm -rf logs/FloodNet/*
-echo "Tensorboard Dashboard ⏩ ${HOST}:${PORT}"
 python main.py &
 tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" &
 
