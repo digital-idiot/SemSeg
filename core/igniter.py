@@ -71,7 +71,7 @@ class LightningSemSeg(LightningModule):
         self.validation_loss = MeanMetric(nan_strategy='warn')
         self.test_loss = MeanMetric(nan_strategy='warn')
 
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=['model'])
 
     def forward(self, x: Any) -> Any:
         return self.model(x)
