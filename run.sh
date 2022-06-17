@@ -15,11 +15,11 @@ do
   esac
 done
 
+# Clear previous logs
 rm -rf logs/FloodNet/*
+
+mv "checkpoints" "checkpoints_$(date +%d%m%Y-%H%M%S)"
 
 # PL_FAULT_TOLERANT_TRAINING=1
 python main.py &
 tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" --load_fast=false &
-
-wait
-echo "🏁 Complete 🏁"
