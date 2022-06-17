@@ -276,7 +276,11 @@ if __name__ == '__main__':
             PredictionWriter(writable_datasets=[predict_writer]),
             ModelCheckpoint(
                 dirpath="checkpoints",
-                filename='FloodNet-{epoch}-{validation_loss:.3f}',
+                filename=(
+                    "FloodNet-" +
+                    "{str(epoch).rsplit('=', 1)[-1]}-" +
+                    "{str(val_loss:.3f).rsplit('=', 1)[-1]}"
+                ),
                 monitor='Validation-Mean_Loss',
                 save_top_k=2,
                 save_last=True,
