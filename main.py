@@ -59,7 +59,7 @@ if __name__ == '__main__':
     loss_function = WrappedLoss(
         loss_fn=OhemCrossEntropyLoss(
             ignore_label=0,
-            class_ids=10,
+            class_ids=None,
             threshold=0.7
         )
     )
@@ -287,7 +287,7 @@ if __name__ == '__main__':
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="val_loss",
+                monitor="Validation-Mean_Loss",
                 mode="min",
                 patience=50,
                 strict=True,
