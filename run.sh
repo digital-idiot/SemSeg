@@ -19,6 +19,7 @@ done
 rm -rf logs/FloodNet/*
 
 mv "checkpoints" "checkpoints_$(date +%d%m%Y-%H%M%S)"
+mkdir checkpoints
 
 # PL_FAULT_TOLERANT_TRAINING=1
 python main.py &
