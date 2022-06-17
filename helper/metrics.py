@@ -6,12 +6,12 @@ from torchmetrics import Recall
 from torchmetrics import F1Score
 from torchmetrics import Accuracy
 from torchmetrics import Precision
-from torchmetrics import CohenKappa
+# from torchmetrics import CohenKappa
 from torchmetrics import JaccardIndex
 from helper.utils import delete_indices
 from torchmetrics import ConfusionMatrix
 from torchmetrics import MetricCollection
-from torchmetrics import MatthewsCorrCoef
+# from torchmetrics import MatthewsCorrCoef
 from pytorch_lightning.utilities import rank_zero_only
 
 
@@ -47,7 +47,7 @@ class SegmentationMetrics(MetricCollection):
             'Precision': Precision(
                 num_classes=num_classes,
                 threshold=0.5,
-                mdmc_average='samplewise',
+                mdmc_average='global',
                 ignore_index=None,
                 average='none',
                 top_k=None,
@@ -56,7 +56,7 @@ class SegmentationMetrics(MetricCollection):
             'Recall': Recall(
                 num_classes=num_classes,
                 threshold=0.5,
-                mdmc_average='samplewise',
+                mdmc_average='global',
                 ignore_index=None,
                 average='none',
                 top_k=None,
@@ -65,7 +65,7 @@ class SegmentationMetrics(MetricCollection):
             'IoU': JaccardIndex(
                 num_classes=num_classes,
                 ignore_index=None,
-                absent_score=0.0,
+                absent_score=1.0,
                 threshold=0.5,
                 multilabel=False,
                 average='none'
@@ -74,7 +74,7 @@ class SegmentationMetrics(MetricCollection):
                 num_classes=num_classes,
                 threshold=0.5,
                 average='none',
-                mdmc_average='samplewise',
+                mdmc_average='global',
                 ignore_index=None,
                 top_k=None,
                 multiclass=multiclass
@@ -83,7 +83,7 @@ class SegmentationMetrics(MetricCollection):
                 threshold=0.5,
                 num_classes=num_classes,
                 average='none',
-                mdmc_average='samplewise',
+                mdmc_average='global',
                 ignore_index=None,
                 top_k=None,
                 multiclass=multiclass,
@@ -95,14 +95,23 @@ class SegmentationMetrics(MetricCollection):
                 multilabel=False,
                 normalize='none'
             ),
-            "MCC": MatthewsCorrCoef(
+            "mIoU": JaccardIndex(
                 num_classes=num_classes,
-                threshold=0.5
+                ignore_index=None,
+                absent_score=1.0,
+                threshold=0.5,
+                multilabel=False,
+                average='macro'
             ),
-            "Kappa": CohenKappa(
+            "Global Accuracy": Accuracy(
+                threshold=0.5,
                 num_classes=num_classes,
-                weights=None,
-                threshold=0.5
+                average='micro',
+                mdmc_average='global',
+                ignore_index=None,
+                top_k=None,
+                multiclass=multiclass,
+                subset_accuracy=False
             )
         }
         super(SegmentationMetrics, self).__init__(
@@ -119,8 +128,8 @@ class SegmentationMetrics(MetricCollection):
             "Accuracy"
         )
         self.scalar_keys = (
-            "MCC",
-            "Kappa"
+            "mIoU",
+            "Global Accuracy"
         )
         self.cm_key = "Confusion_Matrix"
 

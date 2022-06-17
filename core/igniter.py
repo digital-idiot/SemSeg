@@ -71,6 +71,8 @@ class LightningSemSeg(LightningModule):
         self.validation_loss = MeanMetric(nan_strategy='warn')
         self.test_loss = MeanMetric(nan_strategy='warn')
 
+        self.save_hyperparameters()
+
     def forward(self, x: Any) -> Any:
         return self.model(x)
 
@@ -123,10 +125,6 @@ class LightningSemSeg(LightningModule):
             'loss': current_loss
         }
 
-    # def on_train_epoch_end(self) -> None:
-    #     self.training_metrics.reset()
-    #     self.training_loss.reset()
-
     def validation_step(
             self,
             batch: Tuple[torch.Tensor, torch.Tensor],
@@ -161,10 +159,6 @@ class LightningSemSeg(LightningModule):
         return {
             'val_loss': current_loss
         }
-
-    # def on_validation_epoch_end(self) -> None:
-    #     self.validation_metrics.reset()
-    #     self.validation_loss.reset()
 
     def test_step(
             self,

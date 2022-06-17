@@ -23,4 +23,5 @@ def class_weights(
     mask = frequencies == 0
     weights = frequencies.sum() / (n_classes * frequencies)
     weights[mask] = 0
+    weights = weights / weights.sum()
     return weights

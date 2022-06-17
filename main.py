@@ -1,4 +1,5 @@
 import warnings
+from pathlib import Path
 from tuners.tune import tune_lr
 from tuners.tune import tune_batch
 from torch_optimizer import AdaBound
@@ -38,6 +39,7 @@ warnings.filterwarnings('error', category=UserWarning)
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
+    checkpoint_dir = Path("checkpoints")
     image_shape = (768, 1024)
     max_epochs = 500
     model = TopFormerModel(
@@ -193,7 +195,7 @@ if __name__ == '__main__':
                 LogConfusionMatrix(),
                 PredictionWriter(writable_datasets=[predict_writer]),
                 ModelCheckpoint(
-                    dirpath="checkpoints",
+                    dirpath=str(checkpoint_dir),
                     filename='FloodNet-{epoch}-{validation_loss:.3f}',
                     monitor='Validation-Mean_Loss',
                     save_top_k=2,
@@ -267,7 +269,7 @@ if __name__ == '__main__':
     trainer = Trainer(
         logger=TensorBoardLogger(save_dir="logs", name='FloodNet'),
         callbacks=[
-            StochasticWeightAveraging(swa_lrs=1e-2),
+            StochasticWeightAveraging(swa_epoch_start=0.1, swa_lrs=1e-2),
             RichProgressBar(),
             ShowMetric(),
             LogConfusionMatrix(),
@@ -281,20 +283,20 @@ if __name__ == '__main__':
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="Validation-Mean_Loss",
+                monitor="val_loss",
                 mode="min",
-                patience=10,
+                patience=50,
                 strict=True,
                 check_finite=True,
                 min_delta=1e-3,
                 check_on_train_epoch_end=False,
             )
         ],
-        accumulate_grad_batches=5,
-        check_val_every_n_epoch=10,
+        accumulate_grad_batches=2,
+        check_val_every_n_epoch=20,
         num_sanity_val_steps=0,
         detect_anomaly=False,
-        log_every_n_steps=5,
+        log_every_n_steps=2,
         enable_progress_bar=True,
         precision=16,
         strategy=DDPStrategy(find_unused_parameters=False),
@@ -304,6 +306,8 @@ if __name__ == '__main__':
         accelerator="gpu",
         devices=-1
     )
-
+    last_checkpoint = checkpoint_dir / "last.ckpt"
+    if last_checkpoint.is_file():
+        net.load_from_checkpoint(checkpoint_path=str(last_checkpoint))
     # Training
     trainer.fit(model=net, datamodule=data_module)

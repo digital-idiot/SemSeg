@@ -16,7 +16,7 @@ do
 done
 
 rm -rf logs/FloodNet/*
-python main.py &
+PL_FAULT_TOLERANT_TRAINING=1 python main.py &
 tensorboard --logdir logs/FloodNet --host "${HOST}" --port "${PORT}" --load_fast=false &
 
 wait
