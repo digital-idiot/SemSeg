@@ -278,8 +278,8 @@ if __name__ == '__main__':
                 dirpath="checkpoints",
                 filename=(
                     "FloodNet-" +
-                    "{str(epoch).rsplit('=', 1)[-1]}-" +
-                    "{str(val_loss:.3f).rsplit('=', 1)[-1]}"
+                    "{epoch}-" +
+                    "{Validation-Mean_Loss:.3f}"
                 ),
                 monitor='Validation-Mean_Loss',
                 save_top_k=2,
