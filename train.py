@@ -257,7 +257,7 @@ if __name__ == '__main__':
                 EarlyStopping(
                     monitor="Validation-mIoU",
                     mode="max",
-                    patience=10,
+                    patience=100,
                     strict=True,
                     check_finite=True,
                     min_delta=1e-3,
