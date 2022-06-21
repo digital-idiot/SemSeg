@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # TODO: log clean up and other housekeeping
 
-# Re-spawn as a background process, if we haven't already.
-if [[ "$1" != "-n" ]]; then
-    nohup "$0" -n &
-    exit $?
-fi
-
 options=$(getopt -a -n run -o c:p:h:e: --long ckpt:,port:,host:,env: -- "$@")
 eval set -- "$options"
 
