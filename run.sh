@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # TODO: log clean up and other housekeeping
+
+# Re-spawn as a background process, if we haven't already.
+if [[ "$1" != "-n" ]]; then
+    nohup "$0" -n &
+    exit $?
+fi
+
 options=$(getopt -a -n run -o c:p:h:e: --long ckpt:,port:,host:,env: -- "$@")
 eval set -- "$options"
 
@@ -7,7 +14,8 @@ CKPT=''
 PORT='0'
 HOST='127.0.0.1'
 ENV=''
-SESSION=${"$(uuidgen)":0:6}
+SESSION="$(uuidgen)"
+SESSION=${SESSION:0:6}
 
 echo "Session: $SESSION"
 
@@ -23,17 +31,20 @@ do
   esac
 done
 
-echo "Environment: $ENV"
-echo "Session: $SESSION"
-echo "Tensorboard Server: http://$HOST:$PORT"
-
 # Clear previous logs
 rm -rf logs/FloodNet/*
+
+echo "Environment: $ENV" > "logs/info.log"
+echo "Session: $SESSION" >> "logs/info.log"
+echo "Tensorboard Server: http://$HOST:$PORT" >> "logs/info.log"
 
 dst_path="checkpoints_$(date +%d%m%Y-%H%M%S)"
 mv "checkpoints" "${dst_path}"
 mkdir checkpoints
 
+if [ -n "$ENV" ] && [ "$ENV" != " " ]; then
+  micromamba activate "$ENV"
+fi
 tmux new-session -d -s "$SESSION"
 
 # PL_FAULT_TOLERANT_TRAINING=1
