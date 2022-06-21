@@ -186,7 +186,7 @@ class LogConfusionMatrix(Callback):
         fig = plot_confusion_matrix(cm_df=cm_df, key=key, **self.options)
         # noinspection PyUnresolvedReferences
         logger.experiment.add_figure(
-            tag='Training-Confusion_Matrix',
+            tag=f'{key}-Confusion_Matrix',
             figure=fig,
             close=True
         )
@@ -213,7 +213,7 @@ class LogConfusionMatrix(Callback):
         confusion_matrix = metric_collection['confusion_matrix']
         self.log_figure(
             cm_df=confusion_matrix,
-            key='Training',
+            key='Validation',
             logger=trainer.logger
         )
 

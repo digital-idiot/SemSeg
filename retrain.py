@@ -1,7 +1,7 @@
+import torch
 import warnings
+import argparse
 from pathlib import Path
-from tuners.tune import tune_lr
-from tuners.tune import tune_batch
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
 from helper.assist import WrappedLoss
@@ -10,18 +10,20 @@ from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
+from torch.utils.data import ConcatDataset
 from helper.callbacks import PredictionWriter
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
+from torchvision.transforms import RandomAffine
 # noinspection PyUnresolvedReferences
 from torch.optim.lr_scheduler import OneCycleLR
 from torchvision.transforms.functional import hflip
 from torchvision.transforms.functional import vflip
 from data_factory.transforms import RandomSharpness
 from data_factory.dataset import DatasetConfigurator
-from torchvision.transforms import RandomResizedCrop
 from torchvision.transforms import InterpolationMode
 from data_factory.data_module import IgniteDataModule
+from data_factory.transforms import RandomPerspective
 from pytorch_lightning.callbacks import RichProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -39,9 +41,21 @@ warnings.filterwarnings('error', category=UserWarning)
 
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
+    parser = argparse.ArgumentParser(description='Retrain')
+    parser.add_argument(
+        '-c', '--checkpoint',
+        metavar='Previous Checkpoint Path',
+        action='store',
+        type=str,
+        required=True,
+        dest='checkpoint_path',
+        help='Specify Previous Checkpoint Path'
+    )
+    args = parser.parse_args()
+    last_checkpoint = Path(args.checkpoint_path)
     checkpoint_dir = Path("checkpoints")
     image_shape = (768, 1024)
-    max_epochs = 500
+    max_epochs = 300
     model = TopFormerModel(
         num_classes=10,
         config_alias='B',
@@ -51,16 +65,18 @@ if __name__ == '__main__':
     )
     optimizer = WrappedOptimizer(
         optimizer=AdaBound,
-        lr=1e-3,
+        lr=1e-4,
+        weight_decay=1e-4,
+        betas=(0.9, 0.99),
         final_lr=0.1,
-        amsbound=False
+        amsbound=True
     )
 
     loss_function = WrappedLoss(
         loss_fn=OhemCrossEntropyLoss(
-            ignore_label=0,
-            class_ids=None,
-            threshold=0.7
+            ignore_index=0,
+            threshold=0.7,
+            min_kept=0.5
         )
     )
 
@@ -81,24 +97,37 @@ if __name__ == '__main__':
         probability=0.5
     )
     augmentor.add_transform(
-        transform=RandomResizedCrop(
-            size=image_shape,
-            scale=(0.8, 1.2),
-            ratio=(1.0, 1.0),
-            interpolation=InterpolationMode.NEAREST
-        ),
-        target='both',
-        probability=0.5
-    )
-    augmentor.add_transform(
         transform=RandomSharpness(
             sharpness_range=(0.8, 1.2)
         ),
         target='image',
         probability=0.5
     )
+    augmentor.add_transform(
+        transform=RandomAffine(
+            degrees=(-180, 180),
+            translate=(0.15, 0.15),
+            scale=(0.8, 1.2),
+            shear=None,
+            interpolation=InterpolationMode.BILINEAR,
+            fill=0,
+            center=None
+        ),
+        target='sync_pair',
+        probability=0.5
+    )
+    augmentor.add_transform(
+        transform=RandomPerspective(
+            image_shape=image_shape,
+            distortion_scale=0.2,
+            interpolation=InterpolationMode.BILINEAR,
+            fill=0
+        ),
+        target='sync_pair',
+        probability=0.5
+    )
 
-    train_dataset = DatasetConfigurator(
+    train_dataset_a = DatasetConfigurator(
         conf_path="Data/FloodNetData/Train/Train.json"
     ).generate_paired_dataset(
         image_channels=(1, 2, 3),
@@ -112,7 +141,7 @@ if __name__ == '__main__':
         label_converter=label_to_tensor
     )
 
-    val_dataset = DatasetConfigurator(
+    train_dataset_b = DatasetConfigurator(
         conf_path="Data/FloodNetData/Val/Val.json"
     ).generate_paired_dataset(
         image_channels=(1, 2, 3),
@@ -121,28 +150,23 @@ if __name__ == '__main__':
         pad_aspect=0,
         image_resampling=0,
         label_resampling=0,
-        transform=None,
+        transform=augmentor,
         image_converter=image_to_tensor,
         label_converter=label_to_tensor
     )
 
-    scheduler = WrappedScheduler(
-        scheduler=OneCycleLR,
-        max_lr=0.01,
-        steps_per_epoch=len(train_dataset),
-        epochs=max_epochs
-    )
+    train_dataset = ConcatDataset(datasets=(train_dataset_a, train_dataset_b))
 
     net = LightningSemSeg(
         model=model,
         optimizer=optimizer,
-        scheduler=scheduler,
+        scheduler=None,
         criterion=loss_function,
         ignore_index=0,
         normalize_cm='true'
     )
 
-    test_dataset = DatasetConfigurator(
+    val_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Test/Test.json"
     ).generate_paired_dataset(
         image_channels=(1, 2, 3),
@@ -171,7 +195,7 @@ if __name__ == '__main__':
     data_module = IgniteDataModule(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
-        test_dataset=test_dataset,
+        test_dataset=val_dataset,
         predict_dataset=predict_dataset,
         num_workers=8,
         batch_size=1,
@@ -179,91 +203,17 @@ if __name__ == '__main__':
         collate_fn=ReadableImagePairDataset.collate
     )
 
-    # noinspection SpellCheckingInspection
-    data_module.batch_size = tune_batch(
-        model=net,
-        tuning_params={
-            "mode": "power",
-            "datamodule": data_module,
-            "max_trials": 2
-        },
-        trainer_args={
-            "callbacks": [
-                StochasticWeightAveraging(swa_lrs=1e-2),
-                RichProgressBar(),
-                ShowMetric(),
-                LogConfusionMatrix(),
-                PredictionWriter(writable_datasets=[predict_writer]),
-                ModelCheckpoint(
-                    dirpath=str(checkpoint_dir),
-                    filename='FloodNet-{epoch}-{validation_loss:.3f}',
-                    monitor='Validation-Mean_Loss',
-                    save_top_k=2,
-                    save_last=True,
-                    save_on_train_epoch_end=False
-                ),
-                EarlyStopping(
-                    monitor="Validation-Mean_Loss",
-                    mode="min",
-                    patience=10,
-                    strict=True,
-                    check_finite=True,
-                    min_delta=1e-3,
-                    check_on_train_epoch_end=False,
-                )
-            ],
-            "accumulate_grad_batches": 1,
-            "check_val_every_n_epoch": 10,
-            "num_sanity_val_steps": 0,
-            "detect_anomaly": False,
-            "log_every_n_steps": 1,
-            "enable_progress_bar": True,
-            "precision": 16,
-            "sync_batchnorm": False,
-            "enable_model_summary": False,
-            "max_epochs": max_epochs,
-            "accelerator": "gpu",
-            "devices": -1
-            # "strategy": DDPStrategy(find_unused_parameters=False),
-        }
-    )
+    assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
+    ckpt = torch.load(str(last_checkpoint))
+    max_lr = ckpt['hyper_parameters']['lr']
+    net.hparams.lr = max_lr / 10.0
+    net.model.load_state_dict(state_dict=ckpt['state_dict'], strict=True)
 
-    # noinspection SpellCheckingInspection
-    net.hparams.lr = tune_lr(
-        model=net,
-        tuning_params={
-            "mode": "exponential",
-            "datamodule": data_module,
-            "min_lr": 1e-08,
-            "max_lr": 1.0
-        },
-        trainer_args={
-            "callbacks": [
-                StochasticWeightAveraging(swa_lrs=1e-2),
-                EarlyStopping(
-                    monitor="Validation-Mean_Loss",
-                    mode="min",
-                    patience=10,
-                    strict=True,
-                    check_finite=True,
-                    min_delta=1e-3,
-                    check_on_train_epoch_end=False,
-                )
-            ],
-            "accumulate_grad_batches": 1,
-            "check_val_every_n_epoch": 10,
-            "num_sanity_val_steps": 0,
-            "detect_anomaly": False,
-            "log_every_n_steps": 1,
-            "enable_progress_bar": True,
-            "precision": 32,
-            "sync_batchnorm": False,
-            "enable_model_summary": False,
-            "max_epochs": max_epochs,
-            "accelerator": "gpu",
-            "devices": -1,
-            # "strategy": DDPStrategy(find_unused_parameters=False),
-        }
+    scheduler = WrappedScheduler(
+        scheduler=OneCycleLR,
+        max_lr=max_lr,
+        steps_per_epoch=len(train_dataset),
+        epochs=max_epochs
     )
 
     trainer = Trainer(
@@ -287,8 +237,8 @@ if __name__ == '__main__':
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="Validation-Mean_Loss",
-                mode="min",
+                monitor="Validation-mIoU",
+                mode="max",
                 patience=50,
                 strict=True,
                 check_finite=True,
@@ -310,8 +260,5 @@ if __name__ == '__main__':
         accelerator="gpu",
         devices=-1
     )
-    last_checkpoint = checkpoint_dir / "last.ckpt"
-    if last_checkpoint.is_file():
-        net.load_from_checkpoint(checkpoint_path=str(last_checkpoint))
     # Training
     trainer.fit(model=net, datamodule=data_module)

@@ -103,49 +103,65 @@ class DiceLoss(Module):
 class OhemCrossEntropyLoss(Module):
     def __init__(
             self,
-            ignore_label: int = 0,
-            class_ids=Union[int, Sequence[int]],
-            threshold: float = 0.7
+            ignore_index: int,
+            threshold: float = 0.7,
+            min_kept: float = 0.1
     ) -> None:
         super().__init__()
-        self.ignore_label = ignore_label
-        self.thresh = -torch.log(torch.tensor(threshold, dtype=torch.float))
-        if class_ids is not None:
-            if isinstance(class_ids, int):
-                class_ids = tuple(range(class_ids))
-            else:
-                assert isinstance(class_ids, Sequence) and all(
-                    [isinstance(i, int) for i in class_ids]
-                ), "'class_ids' are not a integer or a sequence of integer!"
-        self.class_ids = class_ids
-        self.ignore_index = ignore_label
+        self.ignore_index = ignore_index
+        self.threshold = threshold
+        self.ignore_index = ignore_index
+        assert 0 <= min_kept <= 1.0, (
+            f"In valid 'min_kept' ratio: {min_kept}.\n" +
+            "Valid range: [0.0, 1.0]"
+        )
+        self.min_kept = min_kept
 
     # noinspection SpellCheckingInspection
     def forward(self, preds: Tensor, targets: Tensor) -> Tensor:
-        n_min = targets[targets != self.ignore_label].numel() // 16
-        if self.class_ids:
-            weights = class_weights(
-                x=targets,
-                class_ids=torch.tensor(
-                    data=self.class_ids,
-                    dtype=torch.long,
-                    device=targets.device
-                )
-            )
-        else:
-            weights = None
+        # get the label after ohem
+        n, c, h, w = preds.shape
+        label = targets.detach().clone().reshape(-1)
+        valid_mask = (label != self.ignore_index)
+        num_valid = valid_mask[valid_mask].numel()
 
+        prob = preds.detach().clone().softmax(dim=1).permute(
+            (1, 0, 2, 3)
+        ).reshape((c, -1))
+        # get the prob of relevant label
+        label_onehot = one_hot(label, c)
+        label_onehot = label_onehot.permute((1, 0))
+        prob = prob * label_onehot
+        prob = prob.sum(dim=0)
+        valid_prob = prob[valid_mask]
+
+        min_kept = int(self.min_kept * valid_prob.numel())
+        if min_kept < num_valid and num_valid > 0:
+            if min_kept > 0:
+                index = valid_prob.argsort(dim=-1)
+                threshold_index = index[min(index.numel(), min_kept) - 1]
+                if prob[threshold_index] > self.threshold:
+                    self.threshold = prob[threshold_index]
+                valid_mask = torch.logical_and(
+                    input=valid_mask,
+                    other=(prob < self.threshold)
+                )
+
+        # make the invalid region as ignore
+        label[torch.logical_not(valid_mask)] = self.ignore_index
+
+        label = label.reshape((n, h, w))
+        valid_mask = valid_mask.view((n, h, w))
         loss = cross_entropy(
             input=preds,
-            target=targets,
-            weight=weights,
+            target=label,
+            weight=None,
             ignore_index=self.ignore_index,
             reduction='none',
             label_smoothing=0.0
-        ).view(-1)
+        )
+        loss_hard = loss[valid_mask].mean()
 
-        loss_hard = loss[loss > self.thresh]
-        if loss_hard.numel() < n_min:
-            loss_hard, _ = loss.topk(n_min)
-
-        return torch.mean(loss_hard)
+        label.stop_gradient = True
+        valid_mask.stop_gradient = True
+        return loss_hard

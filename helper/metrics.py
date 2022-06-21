@@ -6,12 +6,10 @@ from torchmetrics import Recall
 from torchmetrics import F1Score
 from torchmetrics import Accuracy
 from torchmetrics import Precision
-# from torchmetrics import CohenKappa
 from torchmetrics import JaccardIndex
 from helper.utils import delete_indices
 from torchmetrics import ConfusionMatrix
 from torchmetrics import MetricCollection
-# from torchmetrics import MatthewsCorrCoef
 from pytorch_lightning.utilities import rank_zero_only
 
 
