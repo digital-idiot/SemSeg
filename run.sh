@@ -48,19 +48,19 @@ if [ -n "$CKPT" ] && [ "$CKPT" != " " ]; then
   fi
   tmux split-window -hf -t Seg:0
   if [ -n "$ENV" ] && [ "$ENV" != " " ]; then
-    tmux send-keys -t $SESSION:0.0 C-z "micromamba activate $ENV" C-m
+    tmux send-keys -t "$SESSION:0.0" C-z "micromamba activate $ENV" C-m
   fi
-  tmux send-keys -t Seg:0.0 C-z "python retrain.py -c $CKPT" C-m
+  tmux send-keys -t "$SESSION:0.0" C-z "python retrain.py -c $CKPT" C-m
 else
-  tmux split-window -hf -t Seg:0
+  tmux split-window -hf -t "$SESSION:0"
   if [ -n "$ENV" ] && [ "$ENV" != " " ]; then
-    tmux send-keys -t Seg:0.0 C-z "micromamba activate $ENV" C-m
+    tmux send-keys -t "$SESSION:0.0" C-z "micromamba activate $ENV" C-m
   fi
-  tmux send-keys -t Seg:0.0 C-z "python train.py" C-m
+  tmux send-keys -t "$SESSION:0.0" C-z "python train.py" C-m
 fi
 
 tmux split-window -hf -t Seg:0
 if [ -n "$ENV" ] && [ "$ENV" != " " ]; then
-  tmux send-keys -t Seg:0.1 C-z "micromamba activate $ENV" C-m
+  tmux send-keys -t "$SESSION:0.1" C-z "micromamba activate $ENV" C-m
 fi
-tmux send-keys -t Seg:0.1 C-z "tensorboard --logdir logs/FloodNet --host $HOST --port $PORT --load_fast=false" C-m
+tmux send-keys -t "$SESSION:0.1" C-z "tensorboard --logdir logs/FloodNet --host $HOST --port $PORT --load_fast=false" C-m
