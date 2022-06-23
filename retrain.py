@@ -126,36 +126,25 @@ if __name__ == '__main__':
         target='sync_pair',
         probability=0.5
     )
-
-    train_dataset_a = DatasetConfigurator(
+    dc_a = DatasetConfigurator(
         conf_path="Data/FloodNetData/Train/Train.json"
-    ).generate_paired_dataset(
-        image_channels=(1, 2, 3),
-        label_channels=1,
-        target_shape=image_shape,
-        pad_aspect=0,
-        image_resampling=0,
-        label_resampling=0,
-        transform=augmentor,
-        image_converter=image_to_tensor,
-        label_converter=label_to_tensor
     )
-
-    train_dataset_b = DatasetConfigurator(
+    dc_b = DatasetConfigurator(
         conf_path="Data/FloodNetData/Val/Val.json"
-    ).generate_paired_dataset(
-        image_channels=(1, 2, 3),
-        label_channels=1,
+    )
+    image_list = dc_a.image_list + dc_b.image_list
+    label_list = dc_a.label_list + dc_b.label_list
+    train_dataset = ReadableImagePairDataset(
+        image_list=image_list,
+        label_list=label_list,
         target_shape=image_shape,
         pad_aspect=0,
         image_resampling=0,
         label_resampling=0,
         transform=augmentor,
-        image_converter=image_to_tensor,
-        label_converter=label_to_tensor
+        image_maker=image_to_tensor,
+        label_maker=label_to_tensor
     )
-
-    train_dataset = ConcatDataset(datasets=(train_dataset_a, train_dataset_b))
 
     # net = LightningSemSeg(
     #     model=model,
