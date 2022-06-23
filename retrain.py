@@ -14,9 +14,9 @@ from torch.utils.data import ConcatDataset
 from helper.callbacks import PredictionWriter
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
-from torchvision.transforms import RandomAffine
 # noinspection PyUnresolvedReferences
 from torch.optim.lr_scheduler import OneCycleLR
+from data_factory.transforms import RandomAffine
 from torchvision.transforms.functional import hflip
 from torchvision.transforms.functional import vflip
 from data_factory.transforms import RandomSharpness
