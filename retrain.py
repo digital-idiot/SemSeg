@@ -63,14 +63,14 @@ if __name__ == '__main__':
         injection_type='dot_sum',
         fusion='sum'
     )
-    optimizer = WrappedOptimizer(
-        optimizer=AdaBound,
-        lr=1e-4,
-        weight_decay=1e-4,
-        betas=(0.9, 0.99),
-        final_lr=0.1,
-        amsbound=True
-    )
+    # optimizer = WrappedOptimizer(
+    #     optimizer=AdaBound,
+    #     lr=1e-4,
+    #     weight_decay=1e-4,
+    #     betas=(0.9, 0.99),
+    #     final_lr=0.1,
+    #     amsbound=True
+    # )
 
     loss_function = WrappedLoss(
         loss_fn=OhemCrossEntropyLoss(
@@ -109,7 +109,7 @@ if __name__ == '__main__':
             translate=(0.15, 0.15),
             scale=(0.8, 1.2),
             shear=None,
-            interpolation=InterpolationMode.BILINEAR,
+            interpolation=InterpolationMode.NEAREST,
             fill=0,
             center=None
         ),
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         transform=RandomPerspective(
             image_shape=image_shape,
             distortion_scale=0.2,
-            interpolation=InterpolationMode.BILINEAR,
+            interpolation=InterpolationMode.NEAREST,
             fill=0
         ),
         target='sync_pair',
@@ -157,14 +157,14 @@ if __name__ == '__main__':
 
     train_dataset = ConcatDataset(datasets=(train_dataset_a, train_dataset_b))
 
-    net = LightningSemSeg(
-        model=model,
-        optimizer=optimizer,
-        scheduler=None,
-        criterion=loss_function,
-        ignore_index=0,
-        normalize_cm='true'
-    )
+    # net = LightningSemSeg(
+    #     model=model,
+    #     optimizer=optimizer,
+    #     scheduler=None,
+    #     criterion=loss_function,
+    #     ignore_index=0,
+    #     normalize_cm='true'
+    # )
 
     val_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Test/Test.json"
@@ -204,16 +204,16 @@ if __name__ == '__main__':
     )
 
     assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
-    ckpt = torch.load(str(last_checkpoint))
-    max_lr = ckpt['hyper_parameters']['lr']
-    net.hparams.lr = max_lr / 10.0
-    net.model.load_state_dict(state_dict=ckpt['state_dict'], strict=True)
+    max_lr = 5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
 
     scheduler = WrappedScheduler(
         scheduler=OneCycleLR,
         max_lr=max_lr,
         steps_per_epoch=len(train_dataset),
         epochs=max_epochs
+    )
+    net = LightningSemSeg.load_from_checkpoint(
+        last_checkpoint, model=model, scheduler=scheduler
     )
 
     trainer = Trainer(
