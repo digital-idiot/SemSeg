@@ -10,7 +10,6 @@ from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
-from helper.callbacks import PredictionWriter
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
 # noinspection PyUnresolvedReferences
@@ -94,7 +93,7 @@ if __name__ == '__main__':
             translate=(0.15, 0.15),
             scale=(0.8, 1.2),
             shear=None,
-            interpolation=InterpolationMode.BILINEAR,
+            interpolation=InterpolationMode.NEAREST,
             fill=0,
             center=None
         ),
@@ -105,7 +104,7 @@ if __name__ == '__main__':
         transform=RandomPerspective(
             image_shape=image_shape,
             distortion_scale=0.2,
-            interpolation=InterpolationMode.BILINEAR,
+            interpolation=InterpolationMode.NEAREST,
             fill=0
         ),
         target='sync_pair',
@@ -170,23 +169,11 @@ if __name__ == '__main__':
         label_converter=label_to_tensor
     )
 
-    predict_dataset = DatasetConfigurator(
-        conf_path="Data/FloodNetData/Test/Test.json"
-    ).generate_image_dataset(
-        transform=None,
-        target_shape=image_shape,
-        pad_aspect='symmetric',
-        resampling=0,
-        channels=(1, 2, 3),
-        tensor_maker=image_to_tensor
-    )
-
-    predict_writer = predict_dataset.writable_clone(dst_dir='Predictions')
     data_module = IgniteDataModule(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,
-        predict_dataset=predict_dataset,
+        predict_dataset=None,
         num_workers=8,
         batch_size=1,
         shuffle=True,
@@ -207,7 +194,6 @@ if __name__ == '__main__':
                 RichProgressBar(),
                 ShowMetric(),
                 LogConfusionMatrix(),
-                PredictionWriter(writable_datasets=[predict_writer]),
                 ModelCheckpoint(
                     dirpath=str(checkpoint_dir),
                     filename='FloodNet-{epoch}-{validation_loss:.3f}',
@@ -287,7 +273,6 @@ if __name__ == '__main__':
             RichProgressBar(),
             ShowMetric(),
             LogConfusionMatrix(),
-            PredictionWriter(writable_datasets=[predict_writer]),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename=(

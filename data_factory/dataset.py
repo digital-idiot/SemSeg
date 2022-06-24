@@ -439,6 +439,10 @@ class WriteableImageDataset(WritableDataset):
                     f"Overlay already exists: {str(dst_path)}"
                 )
             try:
+                dtype = np.dtype(dst_meta['dtype']) if isinstance(
+                    dst_meta['dtype'], str
+                ) else dst_meta['dtype']
+                data = data.astype(dtype=dtype)
                 with rio.open(dst_path, 'w', **dst_meta) as dst:
                     dst.write(data)
                     if self.color_table is not None:
