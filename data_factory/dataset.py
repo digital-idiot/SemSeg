@@ -226,7 +226,7 @@ class ReadableImageDataset(Dataset):
                 p_dir.mkdir(
                     mode=0o755, parents=True, exist_ok=True
                 )
-            file_paths.append(p_dir)
+            file_paths.append(p_dir / name)
 
         meta_list = self.get_metas()
         return WriteableImageDataset(
