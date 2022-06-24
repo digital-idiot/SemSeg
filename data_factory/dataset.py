@@ -167,6 +167,13 @@ class ReadableImageDataset(Dataset):
     def get_metas(self):
         return [self.get_meta(idx=i) for i in range(len(self))]
 
+    def get_stem(self, idx):
+        assert 0 <= idx < len(self), f'Index ({idx}) is out of bound!'
+        return self.path_list[idx].stem
+
+    def get_stems(self):
+        return [self.get_stem(i) for i in range(len(self))]
+
     def get_filename(self, idx):
         assert 0 <= idx < len(self), f'Index ({idx}) is out of bound!'
         return self.path_list[idx].name
@@ -205,7 +212,13 @@ class ReadableImageDataset(Dataset):
             boundary_color: Tuple[int, int, int, int] = None,
             **kwargs
     ):
-        src_filenames = self.get_filenames()
+        if 'driver' in kwargs.keys():
+            src_filenames = [
+                f"{stem}.{kwargs['driver'].lower()}"
+                for stem in self.get_stems()
+            ]
+        else:
+            src_filenames = self.get_filenames()
         if isinstance(dst_dir, str):
             dir_list = [Path(dst_dir)] * len(src_filenames)
         elif isinstance(dst_dir, Path):
@@ -475,7 +488,7 @@ class WriteableImageDataset(WritableDataset):
                                     self.boundary_color is None
                             ) else self.boundary_color
                             ext_colormap[boundary_id] = boundary_color
-                            dst.write_colormap(
+                            ovr.write_colormap(
                                 1, ext_colormap
                             )
                 return True

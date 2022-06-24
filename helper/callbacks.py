@@ -81,28 +81,6 @@ class PredictionWriter(BasePredictionWriter):
             )
         return None
 
-    @rank_zero_only
-    def write_on_epoch_end(
-            self,
-            trainer: Trainer,
-            pl_module: LightningModule,
-            predictions: Sequence[Any],
-            batch_indices: Optional[Sequence[Any]]
-    ) -> None:
-        raise NotImplementedError(
-            "Writing on epoch end is not supported!"
-        )
-
-    def on_predict_epoch_end(
-            self,
-            trainer: Trainer,
-            pl_module: LightningModule,
-            outputs: Sequence[Any]
-    ) -> None:
-        raise NotImplementedError(
-            "Writing on epoch end is not supported!"
-        )
-
 
 class ShowMetric(Callback):
     def __init__(self):
@@ -124,17 +102,6 @@ class ShowMetric(Callback):
         )
         tabular_dict['quality_report'].index.name = r"Metric"
         self.reports[key] = format_report(tabular_dict)
-
-    # def on_train_epoch_end(
-    #         self, trainer: Trainer, pl_module: LightningModule
-    # ) -> None:
-    #     key = 'Training'
-    #     self.prepare_report(
-    #         tabular_dict=pl_module.training_metrics.tabular_report(),
-    #         loss=pl_module.training_loss.compute(),
-    #         key=key
-    #     )
-    #     rank_zero_info(self.reports[key])
 
     def on_validation_epoch_end(
             self, trainer: Trainer, pl_module: LightningModule
