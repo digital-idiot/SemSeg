@@ -70,7 +70,7 @@ class PredictionWriter(BasePredictionWriter):
             self.write_on_batch_end(
                 trainer=trainer,
                 pl_module=pl_module,
-                predictio=outputs,
+                prediction=outputs,
                 batch_indices=batch_indices,
                 batch=batch,
                 batch_idx=batch_idx,

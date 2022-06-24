@@ -122,3 +122,8 @@ class SimpleHead(tnn.Module):
         x = self.fuse(x)
         x = self.conv(x)
         return x
+
+
+class Refiner(tnn.Module):
+    def __init__(self):
+        super(Refiner, self).__init__()
