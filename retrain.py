@@ -1,6 +1,7 @@
 import torch
 import warnings
 import argparse
+import numpy as np
 from pathlib import Path
 from torch_optimizer import AdaBound
 from pytorch_lightning import Trainer
@@ -180,7 +181,31 @@ if __name__ == '__main__':
         tensor_maker=image_to_tensor
     )
 
-    predict_writer = predict_dataset.writable_clone(dst_dir='Predictions')
+    predict_writer = predict_dataset.writable_clone(
+        dst_dir='Predictions',
+        overlay_dir='Overlays',
+        color_table={
+            0: (0, 0, 0, 0),
+            1: (31, 119, 180, 255),
+            2: (174, 199, 232, 255),
+            3: (255, 127, 14, 255),
+            4: (255, 187, 120, 255),
+            5: (44, 160, 44, 255),
+            6: (152, 223, 138, 255),
+            7: (214, 39, 40, 255),
+            8: (255, 152, 150, 255),
+            9: (148, 103, 189, 255),
+            10: (197, 176, 213, 255)
+        },
+        boundary_color=(1, 1, 1, 255),
+        overlay_transparency=150,
+        dtype=np.uint8,
+        count=1,
+        driver='PNG',
+        height=image_shape[0],
+        width=image_shape[1],
+        nodata=0
+    )
     data_module = IgniteDataModule(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
@@ -212,7 +237,10 @@ if __name__ == '__main__':
             RichProgressBar(),
             ShowMetric(),
             LogConfusionMatrix(),
-            PredictionWriter(writable_datasets=[predict_writer]),
+            PredictionWriter(
+                writable_datasets=[predict_writer],
+                overwrite=True
+            ),
             ModelCheckpoint(
                 dirpath="checkpoints",
                 filename=(

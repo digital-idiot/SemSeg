@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import rasterio as rio
 from abc import ABCMeta
+from typing import Tuple
 from pathlib import Path
 from affine import Affine
 from click import FileError
@@ -13,6 +14,7 @@ from operator import itemgetter
 from torch.utils.data import Dataset
 from data_factory.utils import image_to_tensor
 from data_factory.utils import label_to_tensor
+from skimage.segmentation import find_boundaries
 from data_factory.transforms import TransformPair
 from rasterio.errors import NotGeoreferencedWarning
 from typing import (
@@ -194,7 +196,14 @@ class ReadableImageDataset(Dataset):
             self,
             dst_dir: Union[
                 Union[str, Path], Union[Sequence[Union[str, Path]]]
-            ]
+            ],
+            overlay_dir: Union[
+                Union[str, Path], Union[Sequence[Union[str, Path]]]
+            ] = None,
+            overlay_transparency: int = None,
+            color_table: Dict[int, Sequence[int]] = None,
+            boundary_color: Tuple[int, int, int, int] = None,
+            **kwargs
     ):
         src_filenames = self.get_filenames()
         if isinstance(dst_dir, str):
@@ -228,9 +237,52 @@ class ReadableImageDataset(Dataset):
                 )
             file_paths.append(p_dir / name)
 
+        ###
+        if overlay_dir is not None:
+            if isinstance(overlay_dir, str):
+                dir_list = [Path(overlay_dir)] * len(src_filenames)
+            elif isinstance(overlay_dir, Path):
+                dir_list = [overlay_dir] * len(src_filenames)
+            else:
+                assert (
+                    isinstance(overlay_dir, Sequence) and
+                    (len(overlay_dir) == len(src_filenames))
+                ), (
+                    f'{len(overlay_dir)} directories can not be broadcast ' +
+                    f'with {len(src_filenames)} files!'
+                )
+                dir_list = list()
+                for d in overlay_dir:
+                    if isinstance(d, str):
+                        d = Path(d)
+                    assert isinstance(d, Path), (
+                        f"Not a 'str' ot 'pathlib.Path' instance: {d}"
+                    )
+                    dir_list.append(d)
+            overlay_paths = list()
+            for p_dir, name in zip(dir_list, src_filenames):
+                if not(p_dir.is_dir()):
+                    assert not(p_dir.is_file()), (
+                        f'File exists instead of directory: {p_dir}'
+                    )
+                    p_dir.mkdir(
+                        mode=0o755, parents=True, exist_ok=True
+                    )
+                overlay_paths.append(p_dir / name)
+        else:
+            overlay_paths = None
+        ###
+
         meta_list = self.get_metas()
+        for meta in meta_list:
+            meta.update(kwargs)
         return WriteableImageDataset(
-            path_list=file_paths, meta_list=meta_list
+            path_list=file_paths,
+            overlay_paths=overlay_paths,
+            meta_list=meta_list,
+            color_table=color_table,
+            boundary_color=boundary_color,
+            overlay_transparency=overlay_transparency
         )
 
     def split(self, ratios: Sequence[int], random: bool = True):
@@ -296,7 +348,11 @@ class WriteableImageDataset(WritableDataset):
     def __init__(
             self,
             path_list: Sequence[Union[str, Path]],
-            meta_list: Union[Dict, Sequence[Dict]] = None
+            overlay_paths: Sequence[Union[str, Path]] = None,
+            meta_list: Union[Dict, Sequence[Dict]] = None,
+            color_table: Dict[int, Sequence[int]] = None,
+            boundary_color: Tuple[int, int, int, int] = None,
+            overlay_transparency: int = None,
     ):
         base_meta = {
             'driver': 'GTiff',
@@ -321,6 +377,29 @@ class WriteableImageDataset(WritableDataset):
             p if isinstance(p, Path) else Path(p) for p in path_list
         ]
         self.meta_list = meta_list
+        if color_table is not None:
+            assert isinstance(color_table, Dict)
+        self.color_table = color_table
+        self.overlay_paths = overlay_paths
+        if boundary_color is not None:
+            assert isinstance(
+                boundary_color, Sequence
+            ) and (
+                len(boundary_color) == 4
+            ) and all(
+                isinstance(b, int) and (0 <= b <= 255)
+                for b in boundary_color
+            )
+        self.boundary_color = boundary_color
+        assert isinstance(
+            overlay_transparency, int
+        ) and (
+            0 <= overlay_transparency <= 255
+        ), (
+            f"Invalid transparency value: {overlay_transparency}\n" +
+            "Valid range: [0, 255]"
+        )
+        self.overlay_transparency = overlay_transparency
 
     def write(
             self,
@@ -329,6 +408,9 @@ class WriteableImageDataset(WritableDataset):
             overwrite: bool = False
     ):
         dst_path = self.path_list[idx]
+        ovr_path = self.overlay_paths[idx] if (
+                self.overlay_paths is not None
+        ) else None
         dst_meta = self.meta_list[idx]
         assert data.ndim == 3, (
             f'expected a 3D (C, H, W) array, ' +
@@ -352,9 +434,46 @@ class WriteableImageDataset(WritableDataset):
                 raise FileExistsError(
                     f"File already exists: {str(dst_path)}"
                 )
+            if not overwrite and ovr_path.is_file():
+                raise FileExistsError(
+                    f"Overlay already exists: {str(dst_path)}"
+                )
             try:
                 with rio.open(dst_path, 'w', **dst_meta) as dst:
                     dst.write(data)
+                    if self.color_table is not None:
+                        dst.write_colormap(
+                            1, self.color_table
+                        )
+                if ovr_path is not None:
+                    ovr_boundary = find_boundaries(
+                        label_img=data,
+                        connectivity=1,
+                        mode='thick',
+                        background=0
+                    )
+                    boundary_id = np.max(data) + 1
+                    data[ovr_boundary] = boundary_id
+
+                    with rio.open(ovr_path, 'w', **dst_meta) as ovr:
+                        ovr.write(data)
+                        if self.color_table is not None:
+                            ext_colormap = self.color_table.copy()
+                            ovr_transparency = 128 if (
+                                self.overlay_transparency is None
+                            ) else self.overlay_transparency
+                            for k, color in ext_colormap.items():
+                                if k != ovr.nodata:
+                                    color = *color[:3], ovr_transparency
+                                ext_colormap[k] = color
+
+                            boundary_color = (1, 1, 1, 255) if (
+                                    self.boundary_color is None
+                            ) else self.boundary_color
+                            ext_colormap[boundary_id] = boundary_color
+                            dst.write_colormap(
+                                1, ext_colormap
+                            )
                 return True
             except rio.errors.RasterioError as rio_error:
                 logging.error(f'RasterioError: {rio_error}')

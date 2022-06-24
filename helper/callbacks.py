@@ -48,7 +48,9 @@ class PredictionWriter(BasePredictionWriter):
             batch_idx: int,
             dataloader_idx: int
     ) -> None:
-        data_batch = prediction.detach().clone().cpu().numpy()
+        data_batch = prediction.detach().clone().softmax(dim=1).argmax(
+            dim=1, keepdim=True
+        ).cpu().numpy()
         # noinspection PyUnresolvedReferences
         self.writable_datasets[dataloader_idx].write_batch(
             data_batch=data_batch,
