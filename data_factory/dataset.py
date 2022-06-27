@@ -713,7 +713,7 @@ class DatasetConfigurator(object):
                                 f"{data_map['image_prefix']}" +
                                 f"{key}" +
                                 f"{data_map['image_postfix']}"
-                            ), data_map['label_extension']
+                            ), data_map['image_extension']
                         ]
                     )
                 )
