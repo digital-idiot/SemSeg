@@ -309,8 +309,6 @@ if __name__ == '__main__':
         accelerator="gpu",
         devices=-1
     )
-    last_checkpoint = checkpoint_dir / "last.ckpt"
-    if last_checkpoint.is_file():
-        net.load_from_checkpoint(checkpoint_path=str(last_checkpoint))
+
     # Training
     trainer.fit(model=net, datamodule=data_module)

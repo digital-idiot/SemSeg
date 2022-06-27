@@ -452,6 +452,7 @@ class WriteableImageDataset(WritableDataset):
                     f"Overlay already exists: {str(dst_path)}"
                 )
             try:
+                # noinspection SpellCheckingInspection
                 dtype = np.dtype(dst_meta['dtype']) if isinstance(
                     dst_meta['dtype'], str
                 ) else dst_meta['dtype']
@@ -705,8 +706,18 @@ class DatasetConfigurator(object):
             else:
                 img_dir = Path(data_map["image_directory"])
             img_list = [
-                (img_dir / '.'.join([stem, data_map['image_ext']]))
-                for stem in keys
+                (
+                    img_dir / '.'.join(
+                        [
+                            (
+                                f"{data_map['image_prefix']}" +
+                                f"{key}" +
+                                f"{data_map['image_postfix']}"
+                            ), data_map['label_extension']
+                        ]
+                    )
+                )
+                for key in keys
             ]
         else:
             img_list = None
@@ -717,8 +728,18 @@ class DatasetConfigurator(object):
             else:
                 lbl_dir = Path(data_map["label_directory"])
             lbl_list = [
-                (lbl_dir / '.'.join([stem, data_map['label_ext']]))
-                for stem in keys
+                (
+                    lbl_dir / '.'.join(
+                        [
+                            (
+                                f"{data_map['label_prefix']}" +
+                                f"{key}" +
+                                f"{data_map['label_postfix']}"
+                            ), data_map['label_extension']
+                        ]
+                    )
+                )
+                for key in keys
             ]
         else:
             lbl_list = None
