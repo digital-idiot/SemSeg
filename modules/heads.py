@@ -124,6 +124,71 @@ class SimpleHead(tnn.Module):
         return x
 
 
-class Refiner(tnn.Module):
-    def __init__(self):
-        super(Refiner, self).__init__()
+class RefinerHead(tnn.Module):
+    # noinspection SpellCheckingInspection
+    def __init__(
+            self,
+            n_heads: int,
+            in_channels: int,
+            embedding_dim: int,
+            resize_mode: str = 'bilinear',
+            norm_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'batchnorm_2d'}.items()),
+            act_cfg: Union[
+                Dict[str, Any], FrozenSet[Sequence[Any]]
+            ] = frozenset({'alias': 'relu6'}.items())
+    ):
+        super(RefinerHead, self).__init__()
+        self.n_heads = n_heads
+        self.embedding_dim = embedding_dim
+        self.uni_res = UniRes(
+            ndim=2,
+            resize_mode=resize_mode
+        )
+        self.group_conv = ConvolutionBlock(
+            ndim=2,
+            inc=(n_heads * in_channels),
+            outc=(n_heads * embedding_dim),
+            kernel_size=(1, 1),
+            stride=(1, 1),
+            dilation=(1, 1),
+            padding='auto',
+            padding_mode='zeros',
+            groups=n_heads,
+            bias=False,
+            norm_cfg=None,
+            act_cfg=act_cfg,
+            spectral_norm=False,
+            order='CNA'
+        )
+        self.reduce_conv = ConvolutionBlock(
+            ndim=3,
+            inc=n_heads,
+            outc=1,
+            kernel_size=(1, 1, 1),
+            stride=(1, 1, 1),
+            dilation=(1, 1, 1),
+            padding='auto',
+            padding_mode='zeros',
+            groups=n_heads,
+            bias=False,
+            norm_cfg=norm_cfg,
+            act_cfg=None,
+            spectral_norm=False,
+            order='CNA'
+        )
+
+    def forward(
+            self, x: Union[Sequence[torch.Tensor], Dict[str, torch.Tensor]]
+    ):
+        x = self.uni_res(x)
+        # assert len(x) == self.n_heads
+        # assert len({tuple(t.size()) for t in x})
+        x = torch.cat(tensors=x, dim=1)
+        x = self.group_conv(x)
+        c, d = self.n_heads, self.embedding_dim
+        n, _, h, w = tuple(x.size())
+        x = self.reduce_conv(x.view(n, c, d, h, w))
+        x = x.squeeze(dim=1)
+        return x

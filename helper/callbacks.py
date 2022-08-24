@@ -18,6 +18,7 @@ from pytorch_lightning.loggers.base import LightningLoggerBase
 
 
 class PredictionWriter(BasePredictionWriter):
+
     def __init__(
             self,
             writable_datasets: Union[
@@ -79,6 +80,15 @@ class PredictionWriter(BasePredictionWriter):
                 batch_idx=batch_idx,
                 dataloader_idx=dataloader_idx
             )
+        return None
+
+    def write_on_epoch_end(
+            self,
+            trainer: Trainer,
+            pl_module: LightningModule,
+            predictions: Sequence[Any],
+            batch_indices: Optional[Sequence[Any]]
+    ) -> None:
         return None
 
 
