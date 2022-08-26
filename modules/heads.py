@@ -3,14 +3,20 @@ import torch.nn as tnn
 from typing import Any
 from typing import Dict
 from typing import Union
+from copy import deepcopy
 from typing import Sequence
 from typing import FrozenSet
 from modules.utils import get_shape
+from modules.helpers import Registry
 from modules.blocks import ConvolutionBlock
 from torch.nn.functional import interpolate
+from modules.helpers import NormalizationRegistry
 
 
-__all__ = ['SimpleHead']
+NORMALIZATION_REGISTRY = NormalizationRegistry()
+
+
+__all__ = ['SimpleHead', 'RefinerHead']
 
 
 class UniRes(tnn.Module):
@@ -157,10 +163,10 @@ class RefinerHead(tnn.Module):
             padding_mode='zeros',
             groups=n_heads,
             bias=False,
-            norm_cfg=None,
+            norm_cfg=frozenset({'alias': 'groupnorm'}.items()),
             act_cfg=act_cfg,
             spectral_norm=False,
-            order='CNA'
+            order='CAN'
         )
         self.reduce_conv = ConvolutionBlock(
             ndim=3,
@@ -173,22 +179,87 @@ class RefinerHead(tnn.Module):
             padding_mode='zeros',
             groups=n_heads,
             bias=False,
-            norm_cfg=norm_cfg,
+            norm_cfg=None,
             act_cfg=None,
             spectral_norm=False,
             order='CNA'
         )
+        if bool(norm_cfg):
+            # noinspection SpellCheckingInspection,PyUnresolvedReferences
+            if (
+                norm_cfg['alias'].startswith(('batchnorm', 'instancenorm'))
+            ):
+                norm_cfg['num_features'] = embedding_dim
+            elif norm_cfg['alias'] == 'groupnorm':
+                norm_cfg['num_channels'] = embedding_dim
+        self.norm = NORMALIZATION_REGISTRY(
+            **norm_cfg
+        ) if bool(norm_cfg) else tnn.Identity()
 
     def forward(
             self, x: Union[Sequence[torch.Tensor], Dict[str, torch.Tensor]]
     ):
+        c, d = self.n_heads, self.embedding_dim
         x = self.uni_res(x)
-        # assert len(x) == self.n_heads
-        # assert len({tuple(t.size()) for t in x})
         x = torch.cat(tensors=x, dim=1)
         x = self.group_conv(x)
-        c, d = self.n_heads, self.embedding_dim
+        # Reshape to 5D
         n, _, h, w = tuple(x.size())
         x = self.reduce_conv(x.view(n, c, d, h, w))
+        # Return to 4D
         x = x.squeeze(dim=1)
+        x = self.norm(x)
         return x
+
+
+class HeadRegistry(Registry):
+    __registry = {
+        'simple_head': SimpleHead,
+        'refiner_head': RefinerHead,
+    }
+
+    def __init__(self):
+        # noinspection SpellCheckingInspection
+        self._current_registry = deepcopy(self.__registry)
+
+    @classmethod
+    def register(
+            cls, alias: str, layer: tnn.Module, overwrite: bool = False
+    ) -> None:
+        if overwrite or not(alias in cls.__registry.keys()):
+            cls.__registry[alias] = layer
+        else:
+            raise AssertionError(
+                f"Alias ({alias}) is already exist in the registry!" +
+                "Try different alias or use overwrite flag."
+            )
+
+    def add(
+            self, alias: str, layer: tnn.Module, overwrite: bool = False
+    ) -> None:
+        if overwrite or not self.exists(alias=alias):
+            self._current_registry[alias] = layer
+        else:
+            raise AssertionError(
+                f"Alias ({alias}) is already exist in the current registry!" +
+                "Try different alias or use overwrite flag."
+            )
+
+    def __call__(self, alias: str, *args, **kwargs) -> Any:
+        assert self.exists(alias=alias), (
+            f"Alias ({alias}) does not exist in the registry!"
+        )
+        return self.get(alias=alias)(*args, **kwargs)
+
+    def get(self, alias: str) -> Any:
+        return self._current_registry.get(alias, None)
+
+    @property
+    def keys(self) -> tuple:
+        return tuple(self._current_registry.keys())
+
+    def exists(self, alias: str) -> bool:
+        return alias in self._current_registry
+
+    def __str__(self):
+        return f"Registered Aliases: {self.keys}"

@@ -153,13 +153,21 @@ class ConvolutionBlock(tnn.Module):
             module=pconv
         )
 
-        # noinspection SpellCheckingInspection,PyUnresolvedReferences
-        if bool(norm_cfg) and (
-            norm_cfg['alias'].startswith(('batchnorm', 'instancenorm'))
-        ):
-            norm_cfg['num_features'] = inc if (
-                    self.order.index('N') < self.order.index('C')
-            ) else outc
+        if bool(norm_cfg):
+            # noinspection SpellCheckingInspection,PyUnresolvedReferences
+            if (
+                norm_cfg['alias'].startswith(('batchnorm', 'instancenorm'))
+            ):
+                norm_cfg['num_features'] = inc if (
+                        self.order.index('N') < self.order.index('C')
+                ) else outc
+            elif (
+                norm_cfg['alias'] == 'groupnorm'
+            ):
+                norm_cfg['num_channels'] = inc if (
+                        self.order.index('N') < self.order.index('C')
+                ) else outc
+                norm_cfg['num_groups'] = groups
 
         layer_map = {
             'C': (
