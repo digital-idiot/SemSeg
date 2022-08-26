@@ -16,7 +16,7 @@ from modules.helpers import NormalizationRegistry
 NORMALIZATION_REGISTRY = NormalizationRegistry()
 
 
-__all__ = ['SimpleHead', 'RefinerHead']
+__all__ = ['SimpleHead', 'RefinerHead', 'HeadRegistry']
 
 
 class UniRes(tnn.Module):
@@ -214,8 +214,8 @@ class RefinerHead(tnn.Module):
 
 class HeadRegistry(Registry):
     __registry = {
-        'simple_head': SimpleHead,
-        'refiner_head': RefinerHead,
+        'simple': SimpleHead,
+        'refiner': RefinerHead,
     }
 
     def __init__(self):
