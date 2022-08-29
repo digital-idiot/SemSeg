@@ -78,7 +78,7 @@ class ConvolutionBlock(tnn.Module):
         if isinstance(norm_cfg, FrozenSet):
             norm_cfg = dict(norm_cfg)
         if isinstance(act_cfg, FrozenSet):
-            norm_cfg = dict(act_cfg)
+            act_cfg = dict(act_cfg)
 
         # noinspection SpellCheckingInspection
         pconv_module = tnn.Sequential()
