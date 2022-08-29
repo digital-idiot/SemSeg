@@ -21,7 +21,7 @@ class TopFormerModel(tnn.Module):
             input_channels: int = 3,
             injection_type: str = 'dot_sum',
             fusion: str = 'sum',
-            head_cfg: Dict[str: Any] = frozenset({'alias': 'refiner'}.items())
+            head_cfg: Dict[str, Any] = frozenset({'alias': 'refiner'}.items())
     ):
         super(TopFormerModel, self).__init__()
         assert isinstance(fusion, str) and fusion.lower() in {
