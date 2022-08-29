@@ -4,7 +4,6 @@ import torch.nn as tnn
 from typing import Dict
 from modules.utils import get_shape
 from collections import OrderedDict
-from modules.heads import SimpleHead
 from modules.blocks import ConvolutionBlock
 from torch.nn.functional import interpolate
 from modules.topformer import TopFormerBackBone
