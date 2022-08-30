@@ -53,9 +53,10 @@ class TopFormerModel(tnn.Module):
             head_cfg['n_heads'] = head_count
             head_cfg['in_channels'] = inc
             head_cfg['embedding_dim'] = 2 * num_classes
+            self.head = HEAD_REGISTRY(**head_cfg)
             self.classifier = ConvolutionBlock(
                 ndim=2,
-                inc=inc,
+                inc=self.head.out_channels,
                 outc=num_classes,
                 kernel_size=(1, 1),
                 stride=(1, 1),
@@ -72,6 +73,7 @@ class TopFormerModel(tnn.Module):
         elif head_cfg['alias'] == 'simple':
             head_cfg['in_channels'] = inc
             head_cfg['embedding_dim'] = inc
+            self.head = HEAD_REGISTRY(**head_cfg)
             self.classifier = ConvolutionBlock(
                 ndim=2,
                 inc=inc,
@@ -93,8 +95,6 @@ class TopFormerModel(tnn.Module):
                 f"Specified head ({head_cfg['alias']}) is unknown " +
                 "or not compatible!"
             )
-
-        self.head = HEAD_REGISTRY(**head_cfg)
 
     def forward(self, x: torch.Tensor):
         b, c, h, w = get_shape(x)

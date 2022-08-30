@@ -47,7 +47,8 @@ if __name__ == '__main__':
         config_alias='B',
         input_channels=3,
         injection_type='dot_sum',
-        fusion='sum'
+        fusion='sum',
+        head_cfg=frozenset({'alias': 'refiner'}.items())
     )
     optimizer = WrappedOptimizer(
         optimizer=AdaBound,

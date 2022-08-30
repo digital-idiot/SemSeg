@@ -148,6 +148,7 @@ class RefinerHead(tnn.Module):
         super(RefinerHead, self).__init__()
         self.n_heads = n_heads
         self.embedding_dim = embedding_dim
+        self.out_channels = n_heads * embedding_dim
         self.uni_res = UniRes(
             ndim=2,
             resize_mode=resize_mode
@@ -155,7 +156,7 @@ class RefinerHead(tnn.Module):
         self.group_conv = ConvolutionBlock(
             ndim=2,
             inc=(n_heads * in_channels),
-            outc=(n_heads * embedding_dim),
+            outc=self.out_channels,
             kernel_size=(1, 1),
             stride=(1, 1),
             dilation=(1, 1),
