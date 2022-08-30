@@ -178,7 +178,7 @@ class RefinerHead(tnn.Module):
             dilation=(1, 1, 1),
             padding='auto',
             padding_mode='zeros',
-            groups=n_heads,
+            groups=1,
             bias=False,
             norm_cfg=None,
             act_cfg=None,
