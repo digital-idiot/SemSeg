@@ -152,7 +152,6 @@ class RefinerHead(tnn.Module):
             act_cfg = dict(act_cfg)
         self.n_heads = n_heads
         self.embedding_dim = embedding_dim
-        self.out_channels = n_heads * embedding_dim
         self.uni_res = UniRes(
             ndim=2,
             resize_mode=resize_mode

@@ -56,7 +56,7 @@ class TopFormerModel(tnn.Module):
             self.head = HEAD_REGISTRY(**head_cfg)
             self.classifier = ConvolutionBlock(
                 ndim=2,
-                inc=self.head.out_channels,
+                inc=head_cfg['embedding_dim'],
                 outc=num_classes,
                 kernel_size=(1, 1),
                 stride=(1, 1),
