@@ -52,7 +52,7 @@ class TopFormerModel(tnn.Module):
         if head_cfg['alias'] == 'refiner':
             head_cfg['n_heads'] = head_count
             head_cfg['in_channels'] = inc
-            head_cfg['embedding_dim'] = 2 * num_classes
+            head_cfg['embedding_dim'] = num_classes
             self.head = HEAD_REGISTRY(**head_cfg)
             self.classifier = ConvolutionBlock(
                 ndim=2,
@@ -63,7 +63,7 @@ class TopFormerModel(tnn.Module):
                 dilation=(1, 1),
                 padding='auto',
                 padding_mode='zeros',
-                groups=num_classes,
+                groups=1,
                 bias=False,
                 norm_cfg=None,
                 act_cfg=None,
