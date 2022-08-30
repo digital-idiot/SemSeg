@@ -146,6 +146,10 @@ class RefinerHead(tnn.Module):
             ] = frozenset({'alias': 'relu6'}.items())
     ):
         super(RefinerHead, self).__init__()
+        if norm_cfg is not None:
+            norm_cfg = dict(norm_cfg)
+        if act_cfg is not None:
+            act_cfg = dict(act_cfg)
         self.n_heads = n_heads
         self.embedding_dim = embedding_dim
         self.out_channels = n_heads * embedding_dim
