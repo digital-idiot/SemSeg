@@ -195,7 +195,7 @@ if __name__ == '__main__':
     )
 
     assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
-    max_lr = 2 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
+    max_lr = 0.5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
 
     scheduler = WrappedScheduler(
         scheduler=OneCycleLR,
