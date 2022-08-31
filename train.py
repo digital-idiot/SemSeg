@@ -197,14 +197,14 @@ if __name__ == '__main__':
                 LogConfusionMatrix(),
                 ModelCheckpoint(
                     dirpath=str(checkpoint_dir),
-                    filename='FloodNet-{epoch}-{validation_loss:.3f}',
-                    monitor='Validation-Mean_Loss',
+                    filename='FloodNet-{epoch}-{val_loss:.3f}',
+                    monitor='val_loss',
                     save_top_k=2,
                     save_last=True,
                     save_on_train_epoch_end=False
                 ),
                 EarlyStopping(
-                    monitor="Validation-Mean_Loss",
+                    monitor="val_loss",
                     mode="min",
                     patience=10,
                     strict=True,

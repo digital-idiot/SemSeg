@@ -51,13 +51,14 @@ if __name__ == '__main__':
     last_checkpoint = Path(args.checkpoint_path)
     checkpoint_dir = Path("checkpoints")
     image_shape = (768, 1024)
-    max_epochs = 300
+    max_epochs = 30
     model = TopFormerModel(
         num_classes=10,
         config_alias='B',
         input_channels=3,
         injection_type='dot_sum',
-        fusion='sum'
+        fusion='sum',
+        head_cfg=frozenset({'alias': 'refiner'}.items())
     )
 
     loss_function = WrappedLoss(
@@ -194,7 +195,7 @@ if __name__ == '__main__':
     )
 
     assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
-    max_lr = 5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
+    max_lr = 2 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
 
     scheduler = WrappedScheduler(
         scheduler=OneCycleLR,
@@ -218,17 +219,17 @@ if __name__ == '__main__':
                 filename=(
                     "FloodNet-" +
                     "{epoch}-" +
-                    "{Validation-Mean_Loss:.3f}"
+                    "{val_loss:.3f}"
                 ),
-                monitor='Validation-Mean_Loss',
+                monitor='val_loss',
                 save_top_k=2,
                 save_last=True,
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="Validation-mIoU",
-                mode="max",
-                patience=50,
+                monitor="val_loss",
+                mode="min",
+                patience=10,
                 strict=True,
                 check_finite=True,
                 min_delta=1e-3,
@@ -236,7 +237,7 @@ if __name__ == '__main__':
             )
         ],
         accumulate_grad_batches=2,
-        check_val_every_n_epoch=20,
+        check_val_every_n_epoch=10,
         num_sanity_val_steps=0,
         detect_anomaly=False,
         log_every_n_steps=2,
