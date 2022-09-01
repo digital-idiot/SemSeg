@@ -197,9 +197,9 @@ if __name__ == '__main__':
                 LogConfusionMatrix(),
                 ModelCheckpoint(
                     dirpath=str(checkpoint_dir),
-                    filename='FloodNet-{epoch}-{val_loss:.3f}',
+                    filename='FloodNet-{epoch}-{Validation-Min_Loss:.3f}',
                     monitor='val_loss',
-                    save_top_k=2,
+                    save_top_k=5,
                     save_last=True,
                     save_on_train_epoch_end=False
                 ),
@@ -242,8 +242,8 @@ if __name__ == '__main__':
             "callbacks": [
                 StochasticWeightAveraging(swa_lrs=1e-2),
                 EarlyStopping(
-                    monitor="Validation-mIoU",
-                    mode="max",
+                    monitor="Validation-Min_Loss",
+                    mode="min",
                     patience=100,
                     strict=True,
                     check_finite=True,
@@ -251,7 +251,7 @@ if __name__ == '__main__':
                     check_on_train_epoch_end=False,
                 )
             ],
-            "accumulate_grad_batches": 1,
+            "accumulate_grad_batches": 2,
             "check_val_every_n_epoch": 10,
             "num_sanity_val_steps": 0,
             "detect_anomaly": False,
@@ -289,15 +289,15 @@ if __name__ == '__main__':
             EarlyStopping(
                 monitor="Validation-Min_Loss",
                 mode="min",
-                patience=50,
+                patience=20,
                 strict=True,
                 check_finite=True,
                 min_delta=1e-3,
                 check_on_train_epoch_end=False,
             )
         ],
-        accumulate_grad_batches=3,
-        check_val_every_n_epoch=20,
+        accumulate_grad_batches=2,
+        check_val_every_n_epoch=10,
         num_sanity_val_steps=0,
         detect_anomaly=False,
         log_every_n_steps=2,
