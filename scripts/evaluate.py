@@ -10,7 +10,6 @@ from rich.progress import track
 from sklearn.metrics import f1_score
 from sklearn.metrics import jaccard_score
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import cohen_kappa_score
 from rasterio.errors import NotGeoreferencedWarning
 
 
@@ -33,12 +32,9 @@ class Evaluator(object):
             conf = json.load(fp=src)
         image_pairs = dict()
         for k in conf['keys']:
-            name = (
-                    f"{conf['label_prefix']}{k}{conf['label_prefix']}." +
-                    f"{conf['label_extension']}"
-            )
-            gt_path = gt_dir / name
-            pr_path = pr_dir / name
+            stem = f"{conf['label_prefix']}{k}{conf['label_prefix']}"
+            gt_path = gt_dir / f"{stem}.png"
+            pr_path = pr_dir / f"{stem}.{conf['label_extension']}"
             image_pairs[k] = {'gt': gt_path, 'pr': pr_path}
         self.image_pairs = image_pairs
         self.label_names = label_names
@@ -46,18 +42,16 @@ class Evaluator(object):
 
     def make_report(self, report_path: Union[str, Path]):
         label_names = self.label_names
-        label_indices = self.label_indices
+        label_indices = np.array(self.label_indices)
         df_f1 = pd.DataFrame(
             columns=label_names
         )
         df_iou = pd.DataFrame(
             columns=label_names
         )
-        df_acc = pd.DataFrame(
-            columns=label_names
-        )
         df_k = pd.DataFrame(columns=['Kappa'])
         df_cm = 0
+        df_acc = list()
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore", category=NotGeoreferencedWarning
@@ -82,7 +76,7 @@ class Evaluator(object):
                     gt_arr = gt.read(
                         indexes=1,
                         masked=True,
-                        out_shape=gt_shape.tolist(),
+                        out_shape=tuple(gt_shape.tolist()),
                         resampling=0
                     )
                     diff = pr_shape - gt_shape
@@ -123,37 +117,59 @@ class Evaluator(object):
                     y_true=gt_arr,
                     y_pred=pr_arr,
                     labels=label_indices,
-                    average=None
+                    average=None,
+                    zero_division=1
                 )
                 df_iou.loc[k] = jaccard_score(
                     y_true=gt_arr,
                     y_pred=pr_arr,
                     labels=label_indices,
-                    average=None
+                    average=None,
+                    zero_division=1
                 )
-                df_cm = df_cm + confusion_matrix(
+                cm = confusion_matrix(
                     y_true=gt_arr,
                     y_pred=pr_arr,
                     labels=label_indices,
-                    normalize='true'
+                    normalize=None
                 )
-                # noinspection PyUnresolvedReferences
-                df_acc.loc[k] = df_cm.diagonal().copy()
-                df_k.loc[k] = cohen_kappa_score(
-                    y1=gt_arr,
-                    y2=pr_arr,
-                    labels=label_indices
+                true_sum = np.sum(cm, axis=1, keepdims=True)
+                norm_cm = np.zeros_like(a=cm, dtype=float)
+                np.fill_diagonal(a=norm_cm, val=1)
+                norm_cm = np.divide(
+                    cm, true_sum, where=(true_sum != 0), out=norm_cm
                 )
+                df_cm = df_cm + norm_cm
+                df_acc.append(norm_cm.diagonal().copy())
+
+                cm_diagonal = cm.diagonal().copy()
+                diagonal_mask = cm_diagonal == 0
+                cm_diagonal = cm_diagonal + diagonal_mask.astype(int)
+                np.fill_diagonal(a=cm, val=cm_diagonal)
+                sum0 = np.sum(cm, axis=0)
+                sum1 = np.sum(cm, axis=1)
+                expected = np.outer(sum0, sum1) / np.sum(sum0)
+                w_mat = np.ones_like(a=cm, dtype=int)
+                w_diagonal = np.zeros_like(w_mat.diagonal())
+                np.fill_diagonal(a=w_mat, val=w_diagonal)
+                kappa = 1 - (np.sum(w_mat * cm) / np.sum(w_mat * expected))
+                df_k.loc[k] = kappa
+
         df_cm = pd.DataFrame(
-            data=df_cm,
+            data=(df_cm / len(df_f1.index)),
             index=label_names,
+            columns=label_names
+        )
+        df_acc = np.stack(df_acc, axis=0)
+        df_acc = pd.DataFrame(
+            data=df_acc,
+            index=df_f1.index.tolist(),
             columns=label_names
         )
         with pd.ExcelWriter(
                 path=report_path,
                 engine='odf',
-                mode='w',
-                if_sheet_exists='overlay'
+                mode='w'
         ) as writer:
             df_acc.to_excel(
                 excel_writer=writer,
@@ -185,7 +201,7 @@ class Evaluator(object):
             )
             df_cm.to_excel(
                 excel_writer=writer,
-                sheet_name='F1',
+                sheet_name='Confusion_Matrix',
                 header=True,
                 index=True,
                 index_label='Sample'

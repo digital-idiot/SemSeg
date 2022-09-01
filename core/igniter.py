@@ -4,7 +4,7 @@ from typing import Union
 from typing import Tuple
 from typing import Optional
 from torch import nn as tnn
-from torchmetrics import MeanMetric
+from torchmetrics import MinMetric
 from helper.assist import WrappedLoss
 from helper.assist import WrappedOptimizer
 from helper.assist import WrappedScheduler
@@ -67,9 +67,9 @@ class LightningSemSeg(LightningModule):
             delimiter='-'
         )
 
-        self.training_loss = MeanMetric(nan_strategy='warn')
-        self.validation_loss = MeanMetric(nan_strategy='warn')
-        self.test_loss = MeanMetric(nan_strategy='warn')
+        self.training_loss = MinMetric(nan_strategy='warn')
+        self.validation_loss = MinMetric(nan_strategy='warn')
+        self.test_loss = MinMetric(nan_strategy='warn')
 
         self.save_hyperparameters(ignore=['model'])
 
@@ -103,11 +103,12 @@ class LightningSemSeg(LightningModule):
         current_loss = self.loss_function(prediction, label)
         self.training_metrics.update(preds=prediction, target=label)
         self.training_loss.update(
-            value=current_loss.clone().detach().squeeze(),
-            weight=(1.0 / current_batch_size)
+            value=(
+                current_loss.clone().detach().squeeze() / current_batch_size
+            )
         )
         self.log(
-            name="Training-Mean_Loss",
+            name="Training-Min_Loss",
             value=self.training_loss,
             on_step=False,
             on_epoch=True,
@@ -138,11 +139,12 @@ class LightningSemSeg(LightningModule):
         current_loss = self.loss_function(prediction, label)
         self.validation_metrics.update(preds=prediction, target=label)
         self.validation_loss.update(
-            value=current_loss.clone().detach().squeeze(),
-            weight=(1.0 / current_batch_size)
+            value=(
+                current_loss.clone().detach().squeeze() / current_batch_size
+            )
         )
         self.log(
-            name="Validation-Mean_Loss",
+            name="Validation-Min_Loss",
             value=self.validation_loss,
             on_step=False,
             on_epoch=True,
@@ -173,11 +175,12 @@ class LightningSemSeg(LightningModule):
         current_loss = self.loss_function(prediction, label)
         self.test_metrics.update(preds=prediction, target=label)
         self.test_loss.update(
-            value=current_loss.clone().detach().squeeze(),
-            weight=(1.0 / current_batch_size)
+            value=(
+                current_loss.clone().detach().squeeze() / current_batch_size
+            )
         )
         self.log(
-            name="Test-Mean_Loss",
+            name="Test-Min_Loss",
             value=self.test_loss,
             on_step=False,
             on_epoch=True,

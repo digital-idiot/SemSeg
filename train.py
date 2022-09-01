@@ -279,15 +279,15 @@ if __name__ == '__main__':
                 filename=(
                     "FloodNet-" +
                     "{epoch}-" +
-                    "{Validation-Mean_Loss:.3f}"
+                    "{Validation-Min_Loss:.3f}"
                 ),
-                monitor='Validation-Mean_Loss',
-                save_top_k=2,
+                monitor='Validation-Min_Loss',
+                save_top_k=5,
                 save_last=True,
                 save_on_train_epoch_end=False
             ),
             EarlyStopping(
-                monitor="Validation-Mean_Loss",
+                monitor="Validation-Min_Loss",
                 mode="min",
                 patience=50,
                 strict=True,
