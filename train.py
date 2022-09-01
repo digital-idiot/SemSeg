@@ -296,7 +296,7 @@ if __name__ == '__main__':
                 check_on_train_epoch_end=False,
             )
         ],
-        accumulate_grad_batches=4,
+        accumulate_grad_batches=3,
         check_val_every_n_epoch=20,
         num_sanity_val_steps=0,
         detect_anomaly=False,
