@@ -105,7 +105,7 @@ class ShowMetric(Callback):
             key: str
     ):
         loss_df = pd.DataFrame(
-            data=[loss.item()], index=['Score'], columns=['Mean Loss']
+            data=[loss.item()], index=['Score'], columns=['Min Loss']
         )
         tabular_dict['quality_report'] = pd.concat(
             objs=[tabular_dict['quality_report'], loss_df], axis=1
