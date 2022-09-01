@@ -98,13 +98,13 @@ class LightningSemSeg(LightningModule):
     ) -> STEP_OUTPUT:
         image, label = batch
         # noinspection PyArgumentList
-        current_batch_size = image.size(0)
+        # current_batch_size = image.size(0)
         prediction = self.forward(image)
         current_loss = self.loss_function(prediction, label)
         self.training_metrics.update(preds=prediction, target=label)
         self.training_loss.update(
             value=(
-                current_loss.clone().detach().squeeze() / current_batch_size
+                current_loss.clone().detach().squeeze()
             )
         )
         self.log(
@@ -134,13 +134,13 @@ class LightningSemSeg(LightningModule):
     ) -> Optional[STEP_OUTPUT]:
         image, label = batch
         # noinspection PyArgumentList
-        current_batch_size = image.size(0)
+        # current_batch_size = image.size(0)
         prediction = self.forward(image)
         current_loss = self.loss_function(prediction, label)
         self.validation_metrics.update(preds=prediction, target=label)
         self.validation_loss.update(
             value=(
-                current_loss.clone().detach().squeeze() / current_batch_size
+                current_loss.clone().detach().squeeze()
             )
         )
         self.log(
@@ -170,13 +170,13 @@ class LightningSemSeg(LightningModule):
     ) -> Optional[STEP_OUTPUT]:
         image, label = batch
         # noinspection PyArgumentList
-        current_batch_size = image.size(0)
+        # current_batch_size = image.size(0)
         prediction = self.forward(image)
         current_loss = self.loss_function(prediction, label)
         self.test_metrics.update(preds=prediction, target=label)
         self.test_loss.update(
             value=(
-                current_loss.clone().detach().squeeze() / current_batch_size
+                current_loss.clone().detach().squeeze()
             )
         )
         self.log(
