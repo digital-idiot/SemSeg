@@ -38,7 +38,8 @@ model = TopFormerModel(
     config_alias='B',
     input_channels=3,
     injection_type='dot_sum',
-    fusion='sum'
+    fusion='sum',
+    head_cfg=frozenset({'alias': 'refiner'}.items())
 )
 
 predict_dataset = DatasetConfigurator(
