@@ -47,7 +47,7 @@ class AttentionUniRes(tnn.Module):
             k: float = 1e-2
     ):
         super(AttentionUniRes, self).__init__()
-        self.k = k
+        self.attention = SimpleAttention(k=k)
         self.uni_res = UniRes(
             ndim=2,
             resize_mode=resize_mode
@@ -55,7 +55,7 @@ class AttentionUniRes(tnn.Module):
 
     def forward(self, x: Sequence[torch.Tensor]):
         x = tuple(
-            self_attention(x=t, k=self.k)
+            self.attention(x=t)
             for t in x
         )
         return self.uni_res(x)
