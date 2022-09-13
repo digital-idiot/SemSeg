@@ -8,6 +8,7 @@ from typing import Sequence
 from typing import FrozenSet
 from modules.utils import get_shape
 from modules.helpers import Registry
+from modules.utils import self_attention
 from modules.blocks import ConvolutionBlock
 from torch.nn.functional import interpolate
 from modules.helpers import NormalizationRegistry
@@ -17,6 +18,47 @@ NORMALIZATION_REGISTRY = NormalizationRegistry()
 
 
 __all__ = ['SimpleHead', 'RefinerHead', 'HeadRegistry']
+
+
+class SimpleAttention(tnn.Module):
+    def __init__(self, k: float = 1e-2):
+        super(SimpleAttention, self).__init__()
+        self.k = torch.nn.Parameter(torch.tensor(k))
+
+    def forward(self, x):
+        _, _, h, w = x.size()
+        y = (x - x.mean(dim=(2, 3), keepdim=True)).pow(2)
+        y = (
+            y / (
+                4 * (
+                    self.k + (
+                        y.sum(dim=(2, 3), keepdim=True) / ((w * h) - 1)
+                    )
+                )
+            )
+        ) + 0.5
+        return x * y.sigmoid()
+
+
+class AttentionUniRes(tnn.Module):
+    def __init__(
+            self,
+            resize_mode: str = 'bilinear',
+            k: float = 1e-2
+    ):
+        super(AttentionUniRes, self).__init__()
+        self.k = k
+        self.uni_res = UniRes(
+            ndim=2,
+            resize_mode=resize_mode
+        )
+
+    def forward(self, x: Sequence[torch.Tensor]):
+        x = tuple(
+            self_attention(x=t, k=self.k)
+            for t in x
+        )
+        return self.uni_res(x)
 
 
 class UniRes(tnn.Module):
@@ -39,7 +81,6 @@ class UniRes(tnn.Module):
             device=x[0].device,
             dtype=torch.long
         ).max(dim=0).values.tolist()
-        target_shape = target_shape
 
         # noinspection PyArgumentList
         x = tuple(
@@ -138,12 +179,13 @@ class RefinerHead(tnn.Module):
             in_channels: int,
             embedding_dim: int,
             resize_mode: str = 'bilinear',
+            attention_factor: float = 1e-2,
             norm_cfg: Union[
                 Dict[str, Any], FrozenSet[Sequence[Any]]
-            ] = frozenset({'alias': 'batchnorm_2d'}.items()),
+            ] = frozenset({'alias': 'groupnorm', 'affine': True}.items()),
             act_cfg: Union[
                 Dict[str, Any], FrozenSet[Sequence[Any]]
-            ] = frozenset({'alias': 'relu6'}.items())
+            ] = frozenset({'alias': 'sigmoid'}.items())
     ):
         super(RefinerHead, self).__init__()
         if norm_cfg is not None:
@@ -152,9 +194,9 @@ class RefinerHead(tnn.Module):
             act_cfg = dict(act_cfg)
         self.n_heads = n_heads
         self.embedding_dim = embedding_dim
-        self.uni_res = UniRes(
-            ndim=2,
-            resize_mode=resize_mode
+        self.uni_res = AttentionUniRes(
+            resize_mode=resize_mode,
+            k=attention_factor
         )
         self.group_conv = ConvolutionBlock(
             ndim=2,
@@ -167,16 +209,23 @@ class RefinerHead(tnn.Module):
             padding_mode='zeros',
             groups=n_heads,
             bias=False,
-            norm_cfg=frozenset({'alias': 'groupnorm'}.items()),
+            norm_cfg=frozenset(
+                {
+                    'alias': 'groupnorm',
+                    'num_groups': n_heads,
+                    'num_channels': (n_heads * embedding_dim),
+                    'affine': True
+                }.items()
+            ),
             act_cfg=act_cfg,
             spectral_norm=False,
             order='CAN'
         )
         self.reduce_conv = ConvolutionBlock(
             ndim=3,
-            inc=n_heads,
-            outc=1,
-            kernel_size=(1, 1, 1),
+            inc=embedding_dim,
+            outc=embedding_dim,
+            kernel_size=(n_heads, 1, 1),
             stride=(1, 1, 1),
             dilation=(1, 1, 1),
             padding='auto',
@@ -196,6 +245,10 @@ class RefinerHead(tnn.Module):
                 norm_cfg['num_features'] = embedding_dim
             elif norm_cfg['alias'] == 'groupnorm':
                 norm_cfg['num_channels'] = embedding_dim
+                norm_cfg['num_groups'] = norm_cfg.get(
+                    'num_groups', embedding_dim
+                )
+                norm_cfg['affine'] = norm_cfg.get('affine', True)
         self.norm = NORMALIZATION_REGISTRY(
             **norm_cfg
         ) if bool(norm_cfg) else tnn.Identity()
@@ -209,7 +262,7 @@ class RefinerHead(tnn.Module):
         x = self.group_conv(x)
         # Reshape to 5D
         n, _, h, w = tuple(x.size())
-        x = self.reduce_conv(x.view(n, c, d, h, w))
+        x = self.reduce_conv(x.view(n, d, c, h, w))
         # Return to 4D
         x = x.squeeze(dim=1)
         x = self.norm(x)

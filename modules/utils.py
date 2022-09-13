@@ -43,3 +43,18 @@ def make_divisible(value, divisor: int, min_value: int = None):
     if new_value < 0.9 * value:
         new_value += divisor
     return new_value
+
+
+def self_attention(x: torch.Tensor, k: float = 1e-2):
+    _, _, h, w = x.size()
+    y = (x - x.mean(dim=(2, 3), keepdim=True)).pow(2)
+    y = (
+        y / (
+            4 * (
+                (
+                    y.sum(dim=(2, 3), keepdim=True) / (w * h - 1)
+                ) + k
+            )
+        )
+    ) + 0.5
+    return x * y.sigmoid()
