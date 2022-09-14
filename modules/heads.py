@@ -8,7 +8,6 @@ from typing import Sequence
 from typing import FrozenSet
 from modules.utils import get_shape
 from modules.helpers import Registry
-from modules.utils import self_attention
 from modules.blocks import ConvolutionBlock
 from torch.nn.functional import interpolate
 from modules.helpers import NormalizationRegistry
@@ -223,9 +222,9 @@ class RefinerHead(tnn.Module):
         )
         self.reduce_conv = ConvolutionBlock(
             ndim=3,
-            inc=embedding_dim,
-            outc=embedding_dim,
-            kernel_size=(n_heads, 1, 1),
+            inc=n_heads,
+            outc=1,
+            kernel_size=(1, 1, 1),
             stride=(1, 1, 1),
             dilation=(1, 1, 1),
             padding='auto',
@@ -256,13 +255,14 @@ class RefinerHead(tnn.Module):
     def forward(
             self, x: Union[Sequence[torch.Tensor], Dict[str, torch.Tensor]]
     ):
-        c, d = self.n_heads, self.embedding_dim
+        c, d = self.embedding_dim, self.n_heads
         x = self.uni_res(x)
         x = torch.cat(tensors=x, dim=1)
         x = self.group_conv(x)
         # Reshape to 5D
         n, _, h, w = tuple(x.size())
-        x = self.reduce_conv(x.view(n, d, c, h, w))
+        x = x.view(n, c, d, h, w)
+        x = self.reduce_conv(x.permute(0, 2, 1, 3, 4))
         # Return to 4D
         x = x.squeeze(dim=1)
         x = self.norm(x)
