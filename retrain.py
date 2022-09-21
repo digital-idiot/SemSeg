@@ -8,17 +8,18 @@ from core.models import TopFormerModel
 from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedScheduler
+from torch.utils.data import ConcatDataset
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
 # noinspection PyUnresolvedReferences
 from torch.optim.lr_scheduler import OneCycleLR
 from data_factory.transforms import RandomAffine
+from helper.callbacks import RotateDataModuleFold
 from torchvision.transforms.functional import hflip
 from torchvision.transforms.functional import vflip
 from data_factory.transforms import RandomSharpness
 from data_factory.dataset import DatasetConfigurator
 from torchvision.transforms import InterpolationMode
-from data_factory.data_module import IgniteDataModule
 from data_factory.transforms import RandomPerspective
 from pytorch_lightning.callbacks import RichProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -27,6 +28,7 @@ from pytorch_lightning.strategies.ddp import DDPStrategy
 from data_factory.dataset import ReadableImagePairDataset
 from data_factory.transforms import SegmentationTransform
 from torchvision.transforms.functional import autocontrast
+from data_factory.data_module import FoldedIgniteDataModule
 from data_factory.utils import image_to_tensor, label_to_tensor
 from pytorch_lightning.callbacks import StochasticWeightAveraging
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
@@ -50,8 +52,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     last_checkpoint = Path(args.checkpoint_path)
     checkpoint_dir = Path("checkpoints")
-    image_shape = (768, 1024)
-    max_epochs = 30
+    image_shape = (1024, 1024)
+    max_epochs = 600
     model = TopFormerModel(
         num_classes=10,
         config_alias='B',
@@ -158,50 +160,25 @@ if __name__ == '__main__':
         label_converter=label_to_tensor
     )
 
-    # predict_writer = predict_dataset.writable_clone(
-    #     dst_dir='Predictions',
-    #     overlay_dir='Overlays',
-    #     color_table={
-    #         0: (0, 0, 0, 0),
-    #         1: (31, 119, 180, 255),
-    #         2: (174, 199, 232, 255),
-    #         3: (255, 127, 14, 255),
-    #         4: (255, 187, 120, 255),
-    #         5: (44, 160, 44, 255),
-    #         6: (152, 223, 138, 255),
-    #         7: (214, 39, 40, 255),
-    #         8: (255, 152, 150, 255),
-    #         9: (148, 103, 189, 255),
-    #         10: (197, 176, 213, 255)
-    #     },
-    #     boundary_color=(1, 1, 1, 255),
-    #     overlay_transparency=150,
-    #     dtype=np.uint8,
-    #     count=1,
-    #     driver='PNG',
-    #     height=image_shape[0],
-    #     width=image_shape[1],
-    #     nodata=0
-    # )
-    data_module = IgniteDataModule(
-        train_dataset=train_dataset,
-        val_dataset=val_dataset,
+    data_module = FoldedIgniteDataModule(
+        dev_dataset=ConcatDataset(datasets=[train_dataset, val_dataset]),
+        k_folds=5,
         test_dataset=test_dataset,
         predict_dataset=None,
         num_workers=8,
-        batch_size=8,
+        batch_size=4,
         shuffle=True,
         collate_fn=ReadableImagePairDataset.collate
     )
 
     assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
-    max_lr = 0.5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
+    max_lr = 1.5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
 
     scheduler = WrappedScheduler(
         scheduler=OneCycleLR,
         max_lr=max_lr,
         steps_per_epoch=len(train_dataset),
-        epochs=max_epochs
+        epochs=(0.1 * max_epochs)
     )
     net = LightningSemSeg.load_from_checkpoint(
         last_checkpoint, model=model, scheduler=scheduler
@@ -211,6 +188,7 @@ if __name__ == '__main__':
         logger=TensorBoardLogger(save_dir="logs", name='FloodNet'),
         callbacks=[
             StochasticWeightAveraging(swa_epoch_start=0.1, swa_lrs=1e-2),
+            RotateDataModuleFold(),
             RichProgressBar(),
             ShowMetric(),
             LogConfusionMatrix(),
@@ -236,8 +214,8 @@ if __name__ == '__main__':
                 check_on_train_epoch_end=False,
             )
         ],
-        accumulate_grad_batches=2,
-        check_val_every_n_epoch=10,
+        accumulate_grad_batches=4,
+        check_val_every_n_epoch=5,
         num_sanity_val_steps=0,
         detect_anomaly=False,
         log_every_n_steps=2,
@@ -251,4 +229,6 @@ if __name__ == '__main__':
         devices=-1
     )
     # Training
-    trainer.fit(model=net, datamodule=data_module)
+    trainer.fit(
+        model=net, datamodule=data_module, ckpt_path=str(last_checkpoint)
+    )
