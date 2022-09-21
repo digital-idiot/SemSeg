@@ -94,29 +94,29 @@ if __name__ == '__main__':
         target='image',
         probability=0.5
     )
-    augmentor.add_transform(
-        transform=RandomAffine(
-            degrees=(-180, 180),
-            translate=(0.15, 0.15),
-            scale=(0.8, 1.2),
-            shear=None,
-            interpolation=InterpolationMode.NEAREST,
-            fill=0,
-            center=None
-        ),
-        target='sync_pair',
-        probability=0.5
-    )
-    augmentor.add_transform(
-        transform=RandomPerspective(
-            image_shape=image_shape,
-            distortion_scale=0.2,
-            interpolation=InterpolationMode.NEAREST,
-            fill=0
-        ),
-        target='sync_pair',
-        probability=0.5
-    )
+    # augmentor.add_transform(
+    #     transform=RandomAffine(
+    #         degrees=(-180, 180),
+    #         translate=(0.15, 0.15),
+    #         scale=(0.8, 1.2),
+    #         shear=None,
+    #         interpolation=InterpolationMode.NEAREST,
+    #         fill=0,
+    #         center=None
+    #     ),
+    #     target='sync_pair',
+    #     probability=0.5
+    # )
+    # augmentor.add_transform(
+    #     transform=RandomPerspective(
+    #         image_shape=image_shape,
+    #         distortion_scale=0.2,
+    #         interpolation=InterpolationMode.NEAREST,
+    #         fill=0
+    #     ),
+    #     target='sync_pair',
+    #     probability=0.5
+    # )
 
     train_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Train/Train.json"

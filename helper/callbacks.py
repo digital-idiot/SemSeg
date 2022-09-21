@@ -215,7 +215,7 @@ class RotateDataModuleFold(Callback):
     def __init__(self):
         super(RotateDataModuleFold, self).__init__()
 
-    def on_epoch_end(
+    def on_train_epoch_end(
             self, trainer: Trainer, pl_module: LightningModule
     ) -> None:
         # noinspection PyUnresolvedReferences
