@@ -250,7 +250,6 @@ class ReadableImageDataset(Dataset):
                 )
             file_paths.append(p_dir / name)
 
-        ###
         if overlay_dir is not None:
             if isinstance(overlay_dir, str):
                 dir_list = [Path(overlay_dir)] * len(src_filenames)
@@ -443,6 +442,8 @@ class WriteableImageDataset(WritableDataset):
             warnings.filterwarnings(
                 "ignore", category=NotGeoreferencedWarning
             )
+            if not dst_path.parent.is_dir():
+                dst_path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             if not overwrite and dst_path.is_file():
                 raise FileExistsError(
                     f"File already exists: {str(dst_path)}"
