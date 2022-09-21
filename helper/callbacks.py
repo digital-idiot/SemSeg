@@ -223,3 +223,12 @@ class RotateDataModuleFold(Callback):
         if hasattr(datamodule, 'rotate'):
             datamodule.rotate()
         return None
+
+    def on_validation_start(
+            self, trainer: Trainer, pl_module: LightningModule
+    ) -> None:
+        # noinspection PyUnresolvedReferences
+        datamodule = trainer.datamodule
+        if hasattr(datamodule, 'toggle'):
+            datamodule.toggle()
+        return None

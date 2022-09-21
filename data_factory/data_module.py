@@ -8,6 +8,7 @@ from collections import deque
 from torch.utils.data import Subset
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset
 from torch.utils.data import IterableDataset
 from pytorch_lightning import LightningDataModule
 
@@ -164,7 +165,9 @@ class IgniteDataModule(LightningDataModule):
 class FoldedIgniteDataModule(LightningDataModule):
     def __init__(
             self,
-            dev_dataset: Dataset,
+            train_dataset: Dataset,
+            val_dataset: Dataset,
+            # dev_dataset: Dataset,
             k_folds: int,
             test_dataset: Dataset = None,
             predict_dataset: Dataset = None,
@@ -182,14 +185,15 @@ class FoldedIgniteDataModule(LightningDataModule):
             raise ValueError(
                 f'Illegal value for fold: {k_folds}'
             )
-        self._dev_dataset = dev_dataset
+        self._train_dataset = train_dataset
+        self._val_dataset = val_dataset
         self._test_dataset = test_dataset
         self._predict_dataset = predict_dataset
         self._shuffle = bool(shuffle)
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._collate_fn = collate_fn
-        size = len(self._dev_dataset)
+        size = len(self._train_dataset) + len(self._val_dataset)
         indexes = list(range(size))
         if self._shuffle:
             random.shuffle(indexes)
@@ -220,9 +224,14 @@ class FoldedIgniteDataModule(LightningDataModule):
         self._folds = folds
         self._k_folds = len(folds)
         self._i = 0
+        self._fold_flag = True
 
     def rotate(self):
+        self._fold_flag = True
         self._i = (self._i + 1) % self._k_folds
+
+    def toggle(self):
+        self._fold_flag = False
 
     def get_current(self, key: str):
         return self._folds[self._i][key]
@@ -236,7 +245,9 @@ class FoldedIgniteDataModule(LightningDataModule):
     def train_dataloader(self):
         return dataloader(
             ds=Subset(
-                dataset=self._dev_dataset,
+                dataset=ConcatDataset(
+                    [self._train_dataset, self._val_dataset]
+                ),
                 indices=self.get_current(key='train')
             ),
             batch_size=self._batch_size,
@@ -246,16 +257,27 @@ class FoldedIgniteDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        return dataloader(
-            ds=Subset(
-                dataset=self._dev_dataset,
-                indices=self.get_current(key='val')
-            ),
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            shuffle_flag=False,
-            collate=self._collate_fn
-        )
+        if self._fold_flag:
+            return dataloader(
+                ds=Subset(
+                    dataset=ConcatDataset(
+                        [self._train_dataset, self._val_dataset]
+                    ),
+                    indices=self.get_current(key='val')
+                ),
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle_flag=False,
+                collate=self._collate_fn
+            )
+        else:
+            return dataloader(
+                ds=self._val_dataset,
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle_flag=False,
+                collate=self._collate_fn
+            )
 
     def test_dataloader(self):
         return dataloader(

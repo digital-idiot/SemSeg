@@ -8,7 +8,6 @@ from core.models import TopFormerModel
 from helper.callbacks import ShowMetric
 from core.igniter import LightningSemSeg
 from helper.assist import WrappedScheduler
-from torch.utils.data import ConcatDataset
 from loss.seg_loss import OhemCrossEntropyLoss
 from helper.callbacks import LogConfusionMatrix
 # noinspection PyUnresolvedReferences
@@ -37,6 +36,38 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 warnings.filterwarnings('error', category=UserWarning)
 
 
+class Override(LightningSemSeg):
+    def __init__(
+            self,
+            model, optimizer, criterion,
+            scheduler=None,
+            ignore_index=None,
+            normalize_cm='true',
+            opt_state=None
+    ):
+        super(Override, self).__init__(
+            model=model,
+            optimizer=optimizer,
+            criterion=criterion,
+            scheduler=scheduler,
+            ignore_index=ignore_index,
+            normalize_cm=normalize_cm
+        )
+        self.opt_state = opt_state
+
+    def configure_optimizers(self):
+        # noinspection PyCallingNonCallable
+        out = dict()
+        opt = self.optimizer(self.model.parameters())
+        if self.opt_weights is not None:
+            opt.load_state_dict(self.opt_state)
+        out['optimizer'] = opt
+        if self.scheduler:
+            s = self.scheduler(optimizer=opt)
+            out['lr_scheduler'] = s
+        return out
+
+
 if __name__ == '__main__':
     # TODO: Read all parameters from a conf file
     parser = argparse.ArgumentParser(description='Retrain')
@@ -54,7 +85,7 @@ if __name__ == '__main__':
     checkpoint_dir = Path("checkpoints")
     image_shape = (1024, 1024)
     max_epochs = 600
-    model = TopFormerModel(
+    model_obj = TopFormerModel(
         num_classes=10,
         config_alias='B',
         input_channels=3,
@@ -94,29 +125,29 @@ if __name__ == '__main__':
         target='image',
         probability=0.5
     )
-    # augmentor.add_transform(
-    #     transform=RandomAffine(
-    #         degrees=(-180, 180),
-    #         translate=(0.15, 0.15),
-    #         scale=(0.8, 1.2),
-    #         shear=None,
-    #         interpolation=InterpolationMode.NEAREST,
-    #         fill=0,
-    #         center=None
-    #     ),
-    #     target='sync_pair',
-    #     probability=0.5
-    # )
-    # augmentor.add_transform(
-    #     transform=RandomPerspective(
-    #         image_shape=image_shape,
-    #         distortion_scale=0.2,
-    #         interpolation=InterpolationMode.NEAREST,
-    #         fill=0
-    #     ),
-    #     target='sync_pair',
-    #     probability=0.5
-    # )
+    augmentor.add_transform(
+        transform=RandomAffine(
+            degrees=(-180, 180),
+            translate=(0.15, 0.15),
+            scale=(0.8, 1.2),
+            shear=None,
+            interpolation=InterpolationMode.NEAREST,
+            fill=0,
+            center=None
+        ),
+        target='sync_pair',
+        probability=0.5
+    )
+    augmentor.add_transform(
+        transform=RandomPerspective(
+            image_shape=image_shape,
+            distortion_scale=0.2,
+            interpolation=InterpolationMode.NEAREST,
+            fill=0
+        ),
+        target='sync_pair',
+        probability=0.5
+    )
 
     train_dataset = DatasetConfigurator(
         conf_path="Data/FloodNetData/Train/Train.json"
@@ -161,7 +192,8 @@ if __name__ == '__main__':
     )
 
     data_module = FoldedIgniteDataModule(
-        dev_dataset=ConcatDataset(datasets=[train_dataset, val_dataset]),
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
         k_folds=5,
         test_dataset=test_dataset,
         predict_dataset=None,
@@ -172,17 +204,25 @@ if __name__ == '__main__':
     )
 
     assert last_checkpoint.is_file(), "Previous checkpoint does not exists!"
-    max_lr = 1.5 * torch.load(str(last_checkpoint))['hyper_parameters']['lr']
+    checkpoint_dict = torch.load(str(last_checkpoint))
+    max_lr = 1.5 * checkpoint_dict['hyper_parameters']['lr']
 
-    scheduler = WrappedScheduler(
+    scheduler_obj = WrappedScheduler(
         scheduler=OneCycleLR,
         max_lr=max_lr,
         steps_per_epoch=len(train_dataset),
         epochs=int(0.1 * max_epochs)
     )
+
     net = LightningSemSeg.load_from_checkpoint(
-        last_checkpoint, model=model, scheduler=scheduler
+        last_checkpoint, model=model_obj, scheduler=scheduler_obj
     )
+
+    opt_states = checkpoint_dict.get('optimizer_states')[0]
+    if opt_states is not None:
+        optim = net.optim.opt(net.model_obj.parameters())
+        optim.load_state_dict(opt_states)
+        net.optimizer.opt = optim
 
     trainer = Trainer(
         logger=TensorBoardLogger(save_dir="logs", name='FloodNet'),
@@ -230,5 +270,10 @@ if __name__ == '__main__':
     )
     # Training
     trainer.fit(
-        model=net, datamodule=data_module, ckpt_path=str(last_checkpoint)
+        model=net, datamodule=data_module
+    )
+    trainer.test(
+        model=model_obj,
+        datamodule=data_module,
+        ckpt_path="checkpoints/last.ckpt"
     )
