@@ -190,7 +190,7 @@ class FoldedIgniteDataModule(LightningDataModule):
         if isinstance(self._k_folds, int) and self._k_folds > 1:
             fold_size = size // self._k_folds
             folds = deque()
-            for start in range(start=0, stop=size, step=fold_size):
+            for start in range(0, size, fold_size):
                 stop = min((start + fold_size), size)
                 folds.append(
                     {
