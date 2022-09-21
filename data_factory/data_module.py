@@ -247,7 +247,7 @@ class FoldedIgniteDataModule(LightningDataModule):
             ),
             batch_size=self._batch_size,
             num_workers=self._num_workers,
-            shuffle_flag=self._shuffle,
+            shuffle_flag=False,
             collate=self._collate_fn
         )
 
