@@ -178,7 +178,7 @@ if __name__ == '__main__':
         scheduler=OneCycleLR,
         max_lr=max_lr,
         steps_per_epoch=len(train_dataset),
-        epochs=(0.1 * max_epochs)
+        epochs=int(0.1 * max_epochs)
     )
     net = LightningSemSeg.load_from_checkpoint(
         last_checkpoint, model=model, scheduler=scheduler
