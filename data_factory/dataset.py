@@ -403,14 +403,16 @@ class WriteableImageDataset(WritableDataset):
                 for b in boundary_color
             )
         self.boundary_color = boundary_color
-        assert isinstance(
-            overlay_transparency, int
-        ) and (
-            0 <= overlay_transparency <= 255
-        ), (
-            f"Invalid transparency value: {overlay_transparency}\n" +
-            "Valid range: [0, 255]"
-        )
+
+        if overlay_transparency is not None:
+            assert isinstance(
+                overlay_transparency, int
+            ) and (
+                0 <= overlay_transparency <= 255
+            ), (
+                f"Invalid transparency value: {overlay_transparency}\n" +
+                "Valid range: [0, 255]"
+            )
         self.overlay_transparency = overlay_transparency
 
     def write(
