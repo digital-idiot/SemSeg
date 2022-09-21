@@ -1,9 +1,15 @@
 import random
+from typing import Union
+from typing import Mapping
+from typing import Callable
+from typing import Sequence
+from typing import Optional
 from collections import deque
 from torch.utils.data import Subset
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+from torch.utils.data import IterableDataset
 from pytorch_lightning import LightningDataModule
-from typing import Optional, Union, Sequence, Mapping, Callable
-from torch.utils.data import Dataset, IterableDataset, DataLoader
 
 
 def dataloader(
@@ -168,7 +174,7 @@ class FoldedIgniteDataModule(LightningDataModule):
             collate_fn: Callable = None
     ):
         super(FoldedIgniteDataModule, self).__init__()
-        if isinstance(k_folds, int)  and k_folds > 1:
+        if isinstance(k_folds, int) and k_folds > 1:
             self._k_folds = k_folds
         elif 0 < k_folds <= 1:
             print('normal_split')
